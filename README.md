@@ -81,6 +81,7 @@ The same optional stack includes a SimpleITK registration runner. It writes a me
 - `POST /api/model-lab/search` — compare a bounded, reproducible configuration sweep and persist the selected algorithm
 - `POST /api/model-lab/algorithms/{algorithm_id}/predict` — explain one prediction with feature contributions
 - `POST /api/model-lab/algorithms/{algorithm_id}/batch-predict` — run the same algorithm across many PatientModels
+- `POST /api/model-lab/algorithms/{algorithm_id}/cross-validate` — run deterministic, label-aware k-fold validation against the source cohort
 - `POST /api/model-lab/algorithms/{algorithm_id}/evaluate` — score an algorithm against caller-supplied evaluation labels
 - `POST /api/patient-models/{model_id}/spatial-query`
 - `POST /api/patient-models/{model_id}/graph-query` — neighbors, ancestors, descendants, context, and prior-version traversal
@@ -106,6 +107,9 @@ classification, linear regression, and deterministic bootstrap random forests
 for classification or regression. Every run persists its algorithm
 configuration, training rows, deterministic validation metrics, feature
 importance, tree structure where applicable, and per-prediction explanations.
+The workstation can also run cohort-wide inference and deterministic
+cross-validation against a persisted dataset, with the selected model,
+dataset, fold assignments, and metrics retained as inspectable artifacts.
 
 ## Honest capability boundary
 
