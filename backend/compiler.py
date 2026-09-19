@@ -132,7 +132,7 @@ def _intensity_region_candidates(study_id: str, root: Path, row: dict) -> list[P
             frame_origins=positions,
         )
         geometry = Geometry(centroid=tuple((box.min[i] + box.max[i]) / 2 for i in range(3)), bounding_box=box, volume_mm3=round(len(component) * sx * sy * sz, 3), surface_area_mm2=surface_area, mesh_id=mesh_id, segmentation_id=f"derived:{object_id}", source_frame="patient", voxel_count=len(component))
-        result.append(PatientObject(id=object_id, type="region", label=f"High-intensity region · unlabeled {component_index:02d}", geometry=geometry, sources=[source], review_status="unreviewed", metadata={"series_instance_uid": row["series_instance_uid"], "derived_from": "pixel-percentile-97-connected-component", "voxel_count": len(component), "mesh_path": mesh_path, "mesh_vertex_count": vertex_count, "mesh_face_count": face_count}))
+        result.append(PatientObject(id=object_id, type="region", label=f"High-intensity region · unlabeled {component_index:02d}", geometry=geometry, sources=[source], review_status="unreviewed", metadata={"series_instance_uid": row["series_instance_uid"], "derived_from": "pixel-percentile-97-connected-component", "voxel_count": len(component), "mesh_path": mesh_path, "mesh_vertex_count": vertex_count, "mesh_face_count": face_count, "mesh_smoothing": "taubin" if mesh_path else None}))
     return result
 
 
@@ -188,9 +188,10 @@ def _segmentation_objects(study_id: str, root: Path, row: dict) -> list[PatientO
             identification = getattr(frame_groups[frame_index], "SegmentIdentificationSequence", [])
             if identification:
                 segment_number = int(getattr(identification[0], "ReferencedSegmentNumber", 1))
-        plane_position = sequence_item(frame, "PlanePositionSequence")
-        plane_orientation = sequence_item(frame, "PlaneOrientationSequence") or shared_orientation
-        measures = sequence_item(frame, "PixelMeasuresSequence") or shared_measures
+        frame_group = frame_groups[frame_index] if frame_index < len(frame_groups) else None
+        plane_position = sequence_item(frame_group, "PlanePositionSequence")
+        plane_orientation = sequence_item(frame_group, "PlaneOrientationSequence") or shared_orientation
+        measures = sequence_item(frame_group, "PixelMeasuresSequence") or shared_measures
         orientation = getattr(plane_orientation, "ImageOrientationPatient", None) if plane_orientation else None
         row_axis = tuple(float(value) for value in orientation[:3]) if orientation and len(orientation) >= 6 else shared_row_axis
         column_axis = tuple(float(value) for value in orientation[3:6]) if orientation and len(orientation) >= 6 else shared_column_axis
@@ -239,8 +240,31 @@ def _segmentation_objects(study_id: str, root: Path, row: dict) -> list[PatientO
             frame_origins=frame_origins,
         )
         geometry = Geometry(centroid=tuple((box.min[i] + box.max[i]) / 2 for i in range(3)), bounding_box=box, volume_mm3=round(voxel_counts[segment_number] * sx * sy * sz, 3), surface_area_mm2=surface_area, mesh_id=mesh_id, segmentation_id=f"seg:{row['series_instance_uid']}:{segment_number}", source_frame="patient")
-        result.append(PatientObject(id=object_id, type=object_type, label=label, geometry=geometry, sources=[source], review_status="unreviewed", metadata={"segment_number": segment_number, "series_instance_uid": row["series_instance_uid"], "derived_from": "DICOM SEG labelmap", "mesh_path": mesh_path, "mesh_vertex_count": vertex_count, "mesh_face_count": face_count}))
+        result.append(PatientObject(id=object_id, type=object_type, label=label, geometry=geometry, sources=[source], review_status="unreviewed", metadata={"segment_number": segment_number, "series_instance_uid": row["series_instance_uid"], "derived_from": "DICOM SEG labelmap", "mesh_path": mesh_path, "mesh_vertex_count": vertex_count, "mesh_face_count": face_count, "mesh_smoothing": "taubin" if mesh_path else None}))
     return result
+
+
+def _taubin_smooth(vertices: list[tuple[float, float, float]], faces: list[tuple[int, ...]], iterations: int = 25, shrink: float = 0.5, inflate: float = -0.53) -> list[tuple[float, float, float]]:
+    """Relax the voxel staircase without shrinking the surface (Taubin lambda/mu smoothing).
+
+    Topology, vertex order and face count are unchanged; measurements stay voxel-derived.
+    """
+    if len(vertices) < 4 or not faces:
+        return vertices
+    points = np.asarray(vertices, dtype=np.float64)
+    quads = np.asarray(faces, dtype=np.int64) - 1
+    edges = np.concatenate([np.stack([quads[:, corner], quads[:, (corner + 1) % quads.shape[1]]], axis=1) for corner in range(quads.shape[1])])
+    edges = np.unique(np.sort(edges, axis=1), axis=0)
+    edges = edges[edges[:, 0] != edges[:, 1]]
+    degree = np.bincount(edges.reshape(-1), minlength=len(points)).astype(np.float64)[:, None]
+    connected = degree[:, 0] > 0
+    for _ in range(iterations):
+        for factor in (shrink, inflate):
+            total = np.zeros_like(points)
+            np.add.at(total, edges[:, 0], points[edges[:, 1]])
+            np.add.at(total, edges[:, 1], points[edges[:, 0]])
+            points[connected] += factor * (total[connected] / degree[connected] - points[connected])
+    return [tuple(point) for point in points.tolist()]
 
 
 def _write_voxel_mesh(
@@ -282,8 +306,6 @@ def _write_voxel_mesh(
 
     def transformed_vertex(x: int, y: int, z: int, cx: int, cy: int, cz: int) -> tuple[float, float, float]:
         base = (frame_origins or {}).get(z, origin)
-        if cz and (frame_origins or {}).get(z + 1):
-            base = (frame_origins or {}).get(z + 1, base)
         local = (
             row_axis[0] * (x + cx) * sy + column_axis[0] * (y + cy) * sx + normal_axis[0] * cz * sz,
             row_axis[1] * (x + cx) * sy + column_axis[1] * (y + cy) * sx + normal_axis[1] * cz * sz,
@@ -305,6 +327,7 @@ def _write_voxel_mesh(
                     vertices.append(vertex)
                 indices.append(lookup[vertex])
             faces.append(tuple(indices))
+    vertices = _taubin_smooth(vertices, faces)
     with path.open("w", encoding="utf-8") as handle:
         handle.write(f"# Phasemed surface mesh for {object_id}\n")
         for vertex in vertices:

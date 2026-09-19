@@ -2,12 +2,15 @@ const track = document.getElementById("landingTrack");
 const sections = [...document.querySelectorAll(".landing-section")];
 const progress = [...document.querySelectorAll(".slide-progress button")];
 const currentLabel = document.getElementById("slideCurrent");
+const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
 let current = 0;
-let wheelLock = false;
+let animating = false;
+let settleTimer = 0;
+let lastWheel = 0;
+let burstSpent = false;
 
-function goTo(index, behavior = "smooth") {
+function setCurrent(index) {
   current = Math.max(0, Math.min(sections.length - 1, index));
-  sections[current].scrollIntoView({ behavior, block: "start" });
   document.querySelector(".landing")?.setAttribute("data-current", String(current));
   progress.forEach((button, i) => {
     button.classList.toggle("active", i === current);
@@ -24,26 +27,57 @@ function nearestSection() {
   }, { index: current, distance: Infinity }).index;
 }
 
-const observer = new IntersectionObserver((entries) => {
-  const visible = entries.filter((entry) => entry.isIntersecting).sort((a, b) => b.intersectionRatio - a.intersectionRatio)[0];
-  if (visible) goTo(Number(visible.target.dataset.slide), "auto");
-}, { root: track, threshold: [0.6, 0.8] });
-sections.forEach((section) => observer.observe(section));
+function settle() {
+  animating = false;
+  setCurrent(nearestSection());
+}
+
+function armSettle() {
+  window.clearTimeout(settleTimer);
+  settleTimer = window.setTimeout(settle, 140);
+}
+
+function goTo(index) {
+  setCurrent(index);
+  const top = sections[current].offsetTop;
+  if (Math.abs(track.scrollTop - top) < 2) return;
+  animating = true;
+  armSettle();
+  track.scrollTo({ top, behavior: reducedMotion.matches ? "auto" : "smooth" });
+}
+
+// A section taller than the viewport scrolls natively until its edge is reached.
+function roomWithin(direction) {
+  const section = sections[current];
+  if (direction > 0) return section.offsetTop + section.offsetHeight - (track.scrollTop + track.clientHeight) > 2;
+  return track.scrollTop - section.offsetTop > 2;
+}
 
 progress.forEach((button) => button.addEventListener("click", () => goTo(Number(button.dataset.jump))));
 document.addEventListener("keydown", (event) => {
   if (event.key !== " " && event.key !== "PageDown" && event.key !== "PageUp" && event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
   if (event.target.matches("input, textarea, select, button, a")) return;
   event.preventDefault();
-  const direction = event.key === "PageUp" || event.key === "ArrowUp" ? -1 : 1;
-  goTo(current + direction);
+  const direction = event.key === "PageUp" || event.key === "ArrowUp" || (event.key === " " && event.shiftKey) ? -1 : 1;
+  if (roomWithin(direction)) track.scrollBy({ top: direction * track.clientHeight * 0.8 });
+  else goTo(current + direction);
 });
 track.addEventListener("wheel", (event) => {
-  if (Math.abs(event.deltaY) < 8 || wheelLock) return;
+  if (event.ctrlKey) return;
+  const direction = Math.sign(event.deltaY);
+  if (!direction || Math.abs(event.deltaY) < Math.abs(event.deltaX)) return;
+  // Inertia keeps firing after the gesture; a burst moves at most one slide.
+  const fresh = event.timeStamp - lastWheel > 160;
+  lastWheel = event.timeStamp;
+  if (fresh) burstSpent = false;
+  if (!burstSpent && !animating && roomWithin(direction)) return;
   event.preventDefault();
-  wheelLock = true;
-  goTo(current + (event.deltaY > 0 ? 1 : -1));
-  window.setTimeout(() => { wheelLock = false; }, 650);
+  if (!fresh || animating) return;
+  burstSpent = true;
+  goTo(current + direction);
 }, { passive: false });
-track.addEventListener("scrollend", () => goTo(nearestSection(), "auto"));
-goTo(0, "auto");
+track.addEventListener("scroll", () => {
+  if (!animating) setCurrent(nearestSection());
+  armSettle();
+}, { passive: true });
+setCurrent(nearestSection());

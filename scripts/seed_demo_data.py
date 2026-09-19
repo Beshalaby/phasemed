@@ -1,0 +1,306 @@
+"""Populate a running Phasemed workstation with synthetic demo studies.
+
+Every study is a procedurally generated chest CT phantom plus a matching
+DICOM SEG. Organ shapes are voxelized from the BodyParts3D atlas (CC BY-SA 2.1
+JP, downloaded once into the runtime cache; see scripts/atlas_phantom.py).
+Nothing here is patient data: names, IDs, and descriptions are
+marked as demo/synthetic. The studies go through the real import and compile
+endpoints, so the resulting PatientModels are produced by the same pipeline
+as an imported study.
+
+    ./.venv/bin/python scripts/seed_demo_data.py [--base-url http://127.0.0.1:8787]
+"""
+from __future__ import annotations
+
+import argparse
+import io
+import sys
+import time
+
+import httpx
+import numpy as np
+from pydicom.dataset import Dataset, FileDataset, FileMetaDataset
+from pydicom.sequence import Sequence
+from pydicom.uid import CTImageStorage, ExplicitVRLittleEndian, generate_uid
+
+try:
+    from scripts.atlas_phantom import ATTRIBUTION, AtlasUnavailable, dilate, resample, thorax_labels
+except ModuleNotFoundError:  # run as ./scripts/seed_demo_data.py
+    from atlas_phantom import ATTRIBUTION, AtlasUnavailable, dilate, resample, thorax_labels
+
+SEGMENTATION_STORAGE = "1.2.840.10008.5.1.4.1.1.66.4"
+SLICES = 100
+SLICE_MM = 3.0
+CT_SIZE, CT_MM = 160, 2.5
+SEG_SIZE, SEG_MM = 128, 3.125
+FOV_MIN = -200.0  # patient-space x/y of the field-of-view corner, mm
+NODULE_LABEL = 9
+NODULE_CLEARANCE_MM = 16.0  # keeps every demo nodule inside the lung at its largest size
+
+# Label values match scripts/atlas_phantom.STRUCTURES. Label 7 (rib cage) is painted into
+# the CT only; the compiler surfaces it as unlabeled high-intensity regions.
+HU = {1: -860, 2: -860, 3: 55, 4: 140, 5: -960, 6: 620, 7: 480, NODULE_LABEL: 35}
+SEGMENTS = {1: "Right lung", 2: "Left lung", 3: "Heart", 4: "Thoracic aorta", 5: "Trachea", 6: "Thoracic spine", NODULE_LABEL: "Pulmonary nodule"}
+
+# Analytic stand-in used only when the atlas cannot be downloaded: label -> centre, radii (mm).
+FALLBACK_ELLIPSOIDS = {
+    1: ((-62, -8, 150), (46, 62, 110)), 2: ((62, -8, 150), (44, 62, 110)), 3: ((16, -34, 120), (36, 30, 45)),
+    4: ((20, 28, 150), (11, 11, 130)), 5: ((0, -30, 245), (8, 8, 45)), 6: ((0, 58, 150), (17, 15, 148)),
+}
+
+# "nodule": (lung label, position inside the lung bounding box as x/y/z fractions, radius mm)
+DEMO_STUDIES = [
+    {"key": "rivera-baseline", "name": "Demo^Rivera^Ana", "patient_id": "DEMO-001", "sex": "F", "birth": "19680412", "date": "20260314",
+     "description": "CT Chest · baseline (synthetic phantom)", "scale": 1.0, "nodule": (1, (0.45, 0.4, 0.72), 6.0), "seed": 11},
+    {"key": "rivera-followup", "name": "Demo^Rivera^Ana", "patient_id": "DEMO-001", "sex": "F", "birth": "19680412", "date": "20260912",
+     "description": "CT Chest · 6-month follow-up (synthetic phantom)", "scale": 1.0, "nodule": (1, (0.45, 0.4, 0.72), 10.0), "seed": 12},
+    {"key": "okafor", "name": "Demo^Okafor^Chidi", "patient_id": "DEMO-002", "sex": "M", "birth": "19590227", "date": "20260802",
+     "description": "CT Chest · screening (synthetic phantom)", "scale": 1.08, "nodule": (2, (0.6, 0.55, 0.4), 6.0), "seed": 21},
+    {"key": "lindqvist", "name": "Demo^Lindqvist^Maja", "patient_id": "DEMO-003", "sex": "F", "birth": "19810930", "date": "20260821",
+     "description": "CT Chest · pre-operative (synthetic phantom)", "scale": 0.94, "nodule": None, "seed": 31},
+]
+
+CONTEXT = {
+    "rivera-baseline": [
+        {"resourceType": "DiagnosticReport", "id": "demo-rivera-report-1", "issued": "2026-03-14", "code": {"text": "CT chest report"},
+         "text": "Synthetic demo report. Solid pulmonary nodule in the right upper lobe, approximately 12 mm. Recommend follow-up CT in 6 months."},
+    ],
+    "rivera-followup": [
+        {"resourceType": "DiagnosticReport", "id": "demo-rivera-report-2", "issued": "2026-09-12", "code": {"text": "CT chest follow-up report"},
+         "text": "Synthetic demo report. Interval growth of the right upper lobe pulmonary nodule, now approximately 20 mm."},
+        {"resourceType": "Condition", "id": "demo-rivera-condition", "date": "2026-03-20", "code": {"text": "Solitary pulmonary nodule"},
+         "text": "Synthetic demo record. Pulmonary nodule under surveillance; former smoker, 20 pack-years."},
+        {"resourceType": "ServiceRequest", "id": "demo-rivera-referral", "date": "2026-09-15", "code": {"text": "Surgical referral"},
+         "text": "Synthetic demo record. Referral for multidisciplinary review given growth between studies."},
+    ],
+    "okafor": [
+        {"resourceType": "DiagnosticReport", "id": "demo-okafor-report", "issued": "2026-08-02", "code": {"text": "Lung screening CT report"},
+         "text": "Synthetic demo report. 12 mm pulmonary nodule in the lingula. Annual screening advised."},
+        {"resourceType": "Observation", "id": "demo-okafor-fev1", "effectiveDateTime": "2026-07-18", "code": {"text": "FEV1"},
+         "valueString": "Synthetic demo record. FEV1 2.4 L (78% predicted)."},
+    ],
+    "lindqvist": [
+        {"resourceType": "DiagnosticReport", "id": "demo-lindqvist-report", "issued": "2026-08-21", "code": {"text": "Pre-operative CT chest report"},
+         "text": "Synthetic demo report. Both lungs are clear with no focal lesion. No follow-up imaging required."},
+    ],
+}
+
+
+def axes(size: int, spacing: float) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Voxel-centre coordinates (z, y, x) in patient mm."""
+    plane = FOV_MIN + spacing / 2 + np.arange(size) * spacing
+    return np.arange(SLICES) * SLICE_MM, plane, plane
+
+
+def anatomy_labels(atlas: dict | None, grid: tuple[np.ndarray, np.ndarray, np.ndarray], scale: float) -> np.ndarray:
+    if atlas is not None:
+        return resample(atlas, grid, scale)
+    z, y, x = np.meshgrid(*grid, indexing="ij")
+    labels = np.zeros(z.shape, dtype=np.uint8)
+    for label, (centre, radii) in FALLBACK_ELLIPSOIDS.items():
+        labels[sum(((axis - c * scale) / (r * scale)) ** 2 for axis, c, r in zip((x, y, z), centre, radii)) <= 1.0] = label
+    return labels
+
+
+def nodule_centre(spec: dict, labels: np.ndarray, grid: tuple[np.ndarray, np.ndarray, np.ndarray]) -> tuple[float, float, float] | None:
+    """Place the nodule at a repeatable spot well inside the chosen lung (x, y, z mm)."""
+    if not spec["nodule"]:
+        return None
+    lung, fractions, _ = spec["nodule"]
+    mask = labels == lung
+    steps = int(np.ceil(NODULE_CLEARANCE_MM / min(SLICE_MM, grid[1][1] - grid[1][0])))
+    interior = np.argwhere(~dilate(~mask, steps))
+    if not len(interior):
+        interior = np.argwhere(mask)
+    occupied = np.argwhere(mask)
+    low, high = occupied.min(axis=0), occupied.max(axis=0)
+    target = low + (high - low) * np.array(fractions[::-1])
+    mm = np.array([SLICE_MM, grid[1][1] - grid[1][0], grid[2][1] - grid[2][0]])
+    k, j, i = interior[np.argmin((((interior - target) * mm) ** 2).sum(axis=1))]
+    return float(grid[2][i]), float(grid[1][j]), float(grid[0][k])
+
+
+def phantom_labels(spec: dict, atlas: dict | None, size: int, spacing: float, centre: tuple[float, float, float] | None) -> np.ndarray:
+    grid = axes(size, spacing)
+    labels = anatomy_labels(atlas, grid, spec["scale"])
+    if centre is not None:
+        z, y, x = np.meshgrid(*grid, indexing="ij")
+        labels[(x - centre[0]) ** 2 + (y - centre[1]) ** 2 + (z - centre[2]) ** 2 <= spec["nodule"][2] ** 2] = NODULE_LABEL
+    return labels
+
+
+def ct_volume(spec: dict, labels: np.ndarray) -> np.ndarray:
+    z, y, x = np.meshgrid(*axes(CT_SIZE, CT_MM), indexing="ij")
+    rng = np.random.default_rng(spec["seed"])
+    thorax = np.argwhere((labels > 0).any(axis=0))
+    (y0, x0), (y1, x1) = thorax.min(axis=0), thorax.max(axis=0)
+    grid = axes(CT_SIZE, CT_MM)
+    centre_x, centre_y = (grid[2][x0] + grid[2][x1]) / 2, (grid[1][y0] + grid[1][y1]) / 2
+    radius_x, radius_y = (grid[2][x1] - grid[2][x0]) / 2 + 24, (grid[1][y1] - grid[1][y0]) / 2 + 24
+    body = ((x - centre_x) / radius_x) ** 2 + ((y - centre_y) / radius_y) ** 2 <= 1.0
+    volume = np.full(labels.shape, -1000.0, dtype=np.float32)
+    volume[body] = 35
+    for label, hu in HU.items():
+        volume[labels == label] = hu
+    volume[body] += rng.normal(0, 14, size=int(body.sum())).astype(np.float32)
+    return volume
+
+
+def base_dataset(spec: dict, uids: dict, sop_class: str, modality: str) -> FileDataset:
+    meta = FileMetaDataset()
+    meta.MediaStorageSOPClassUID = sop_class
+    meta.MediaStorageSOPInstanceUID = generate_uid()
+    meta.TransferSyntaxUID = ExplicitVRLittleEndian
+    ds = FileDataset("", {}, file_meta=meta, preamble=b"\0" * 128)
+    ds.PatientName = spec["name"]
+    ds.PatientID = spec["patient_id"]
+    ds.PatientSex = spec["sex"]
+    ds.PatientBirthDate = spec["birth"]
+    ds.StudyInstanceUID = uids["study"]
+    ds.FrameOfReferenceUID = uids["frame"]
+    ds.SOPInstanceUID = meta.MediaStorageSOPInstanceUID
+    ds.SOPClassUID = sop_class
+    ds.Modality = modality
+    ds.StudyDate = spec["date"]
+    ds.StudyDescription = spec["description"]
+    ds.Manufacturer = spec["origin"]
+    ds.SamplesPerPixel = 1
+    ds.PhotometricInterpretation = "MONOCHROME2"
+    ds.PixelRepresentation = 0
+    return ds
+
+
+def encode(ds: FileDataset) -> bytes:
+    buffer = io.BytesIO()
+    ds.save_as(buffer)
+    return buffer.getvalue()
+
+
+def ct_files(spec: dict, uids: dict, labels: np.ndarray) -> list[tuple[str, bytes]]:
+    volume = ct_volume(spec, labels)
+    stored = np.clip(volume + 1024, 0, 4095).astype(np.uint16)
+    series_uid = generate_uid()
+    files = []
+    for index in range(SLICES):
+        ds = base_dataset(spec, uids, CTImageStorage, "CT")
+        ds.SeriesInstanceUID = series_uid
+        ds.SeriesDescription = "Axial chest 3 mm"
+        ds.SeriesNumber = 1
+        ds.InstanceNumber = index + 1
+        ds.Rows = ds.Columns = CT_SIZE
+        ds.PixelSpacing = [CT_MM, CT_MM]
+        ds.SliceThickness = SLICE_MM
+        ds.ImageOrientationPatient = [1, 0, 0, 0, 1, 0]
+        ds.ImagePositionPatient = [FOV_MIN + CT_MM / 2, FOV_MIN + CT_MM / 2, index * SLICE_MM]
+        ds.BitsAllocated = 16
+        ds.BitsStored = 12
+        ds.HighBit = 11
+        ds.RescaleIntercept = -1024
+        ds.RescaleSlope = 1
+        ds.WindowCenter = -400
+        ds.WindowWidth = 1600
+        ds.PixelData = stored[index].tobytes()
+        files.append((f"{spec['key']}-ct-{index + 1:03d}.dcm", encode(ds)))
+    return files
+
+
+def seg_file(spec: dict, uids: dict, labels: np.ndarray) -> tuple[str, bytes]:
+    ds = base_dataset(spec, uids, SEGMENTATION_STORAGE, "SEG")
+    ds.SeriesInstanceUID = generate_uid()
+    ds.SeriesDescription = "Synthetic phantom segmentation"
+    ds.SeriesNumber = 2
+    ds.Rows = ds.Columns = SEG_SIZE
+    ds.BitsAllocated = 1
+    ds.BitsStored = 1
+    ds.HighBit = 0
+    ds.SegmentationType = "BINARY"
+    ds.PixelSpacing = [SEG_MM, SEG_MM]
+    ds.SliceThickness = SLICE_MM
+    measures = Dataset()
+    measures.PixelSpacing = [SEG_MM, SEG_MM]
+    measures.SliceThickness = SLICE_MM
+    orientation = Dataset()
+    orientation.ImageOrientationPatient = [1, 0, 0, 0, 1, 0]
+    shared = Dataset()
+    shared.PixelMeasuresSequence = Sequence([measures])
+    shared.PlaneOrientationSequence = Sequence([orientation])
+    ds.SharedFunctionalGroupsSequence = Sequence([shared])
+    segments, frames, groups = [], [], []
+    present = [(value, name) for value, name in SEGMENTS.items() if (labels == value).any()]
+    for number, (value, name) in enumerate(present, start=1):
+        segment = Dataset()
+        segment.SegmentNumber = number
+        segment.SegmentLabel = name
+        segment.SegmentAlgorithmType = "AUTOMATIC"
+        segment.SegmentAlgorithmName = spec["origin"]
+        segments.append(segment)
+        mask = labels == value
+        if spec["nodule"] and value == spec["nodule"][0]:
+            mask |= labels == NODULE_LABEL  # the lung contains its nodule
+        for z_index in np.flatnonzero(mask.any(axis=(1, 2))):
+            identification = Dataset()
+            identification.ReferencedSegmentNumber = number
+            position = Dataset()
+            position.ImagePositionPatient = [FOV_MIN + SEG_MM / 2, FOV_MIN + SEG_MM / 2, float(z_index * SLICE_MM)]
+            group = Dataset()
+            group.SegmentIdentificationSequence = Sequence([identification])
+            group.PlanePositionSequence = Sequence([position])
+            groups.append(group)
+            frames.append(mask[z_index])
+    ds.SegmentSequence = Sequence(segments)
+    ds.PerFrameFunctionalGroupsSequence = Sequence(groups)
+    ds.NumberOfFrames = len(frames)
+    ds.PixelData = np.packbits(np.stack(frames).astype(np.uint8).reshape(-1), bitorder="little").tobytes()
+    return f"{spec['key']}-seg.dcm", encode(ds)
+
+
+def seed_study(client: httpx.Client, spec: dict, atlas: dict | None) -> str:
+    spec = {**spec, "origin": "Phasemed synthetic phantom (BodyParts3D-derived)" if atlas is not None else "Phasemed synthetic phantom"}
+    uids = {"study": generate_uid(), "frame": generate_uid()}
+    centre = nodule_centre(spec, anatomy_labels(atlas, axes(CT_SIZE, CT_MM), spec["scale"]), axes(CT_SIZE, CT_MM))
+    payload = [*ct_files(spec, uids, phantom_labels(spec, atlas, CT_SIZE, CT_MM, centre)), seg_file(spec, uids, phantom_labels(spec, atlas, SEG_SIZE, SEG_MM, centre))]
+    files = [("files", (name, data, "application/dicom")) for name, data in payload]
+    study_id = client.post("/api/studies/import", files=files).raise_for_status().json()["study"]["id"]
+    job_id = client.post(f"/api/studies/{study_id}/compile").raise_for_status().json()["job"]["id"]
+    while True:
+        job = client.get(f"/api/jobs/{job_id}").raise_for_status().json()
+        if job["status"] in ("completed", "failed"):
+            break
+        time.sleep(0.5)
+    if job["status"] != "completed":
+        raise RuntimeError(f"compile failed for {spec['key']}: {job}")
+    model_id = client.get(f"/api/studies/{study_id}").raise_for_status().json()["model_id"]
+    bundle = {"resourceType": "Bundle", "entry": [{"resource": resource} for resource in CONTEXT[spec["key"]]]}
+    client.post(f"/api/models/{model_id}/context", json=bundle).raise_for_status()
+    return model_id
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    parser.add_argument("--base-url", default="http://127.0.0.1:8787")
+    parser.add_argument("--force", action="store_true", help="seed even when demo studies already exist")
+    parser.add_argument("--offline", action="store_true", help="never download; require the cached BodyParts3D atlas")
+    args = parser.parse_args()
+    with httpx.Client(base_url=args.base_url, timeout=300) as client:
+        existing = [study for study in client.get("/api/studies").raise_for_status().json() if str(study.get("patient_id", "")).startswith("DEMO-")]
+        if existing and not args.force:
+            print(f"{len(existing)} demo studies already present; pass --force to add another set.")
+            return 0
+        try:
+            atlas = thorax_labels(offline=args.offline, log=lambda message: print(f"atlas: {message}"))
+            print(f"Anatomy: {ATTRIBUTION}")
+        except AtlasUnavailable as exc:
+            if args.offline:
+                print(f"error: {exc}", file=sys.stderr)
+                return 1
+            print(f"warning: {exc}; falling back to the analytic ellipsoid phantom", file=sys.stderr)
+            atlas = None
+        for spec in DEMO_STUDIES:
+            started = time.monotonic()
+            model_id = seed_study(client, spec, atlas)
+            print(f"{spec['patient_id']}  {spec['date']}  {spec['description']}  ->  {model_id}  ({time.monotonic() - started:.1f}s)")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

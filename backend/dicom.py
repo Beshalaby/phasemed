@@ -71,7 +71,7 @@ def index_directory(root: Path, study_id: str) -> tuple[StudySummary, list[dict]
         study_instance_uid=study_uid,
         study_date=_value(first, "StudyDate"),
         description=_value(first, "StudyDescription"),
-        modality=_value(first, "Modality"),
+        modality=next((value for _, ds in primary_instances if (value := _value(ds, "Modality")) and value != "SEG"), None) or _value(first, "Modality"),
         series_count=len(series),
         image_count=len(all_instances),
     )
@@ -247,7 +247,9 @@ def volume_plane_png(root: Path, series: dict, plane: str = "axial", index: int 
         image = volume[:, :, slice_index]
     else:
         raise ValueError("plane must be axial, coronal, or sagittal")
-    image = image[::-1, ...]
+    if plane != "axial":
+        # Superior at the top for reformats; axial rows already run anterior to posterior.
+        image = image[::-1, ...]
     return grayscale_array_png(image, window_center, window_width), {"plane": plane, "index": slice_index, "count": count, "shape": list(volume.shape), "window_center": window_center, "window_width": window_width}
 
 

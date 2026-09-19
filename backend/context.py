@@ -72,11 +72,12 @@ def bind_context(model: PatientModel, items: list[dict[str, Any]]) -> list[Conte
             terms = [obj.label.lower(), *(str(value).lower() for value in obj.metadata.values() if isinstance(value, str))]
             terminology = obj.terminology or {}
             code_match = bool(terminology.get("code") and terminology["code"].lower() in haystack)
-            label_match = max((0.92 if term and term in haystack else 0.0) for term in terms) if terms else 0.0
+            label_match = max((0.92 if len(term) > 2 and re.search(rf"\b{re.escape(term)}\b", haystack) else 0.0) for term in terms) if terms else 0.0
             token_match = 0.0
             label_tokens = [token for token in re.findall(r"[a-z0-9]+", obj.label.lower()) if len(token) > 2]
-            if label_tokens:
-                token_match = min(0.82, 0.46 + 0.12 * sum(token in haystack for token in label_tokens))
+            token_hits = sum(token in haystack for token in label_tokens)
+            if token_hits:
+                token_match = min(0.82, 0.46 + 0.12 * token_hits)
             score = 0.98 if code_match else max(label_match, token_match)
             if score:
                 candidates.append((score, obj))

@@ -29,6 +29,20 @@ For a local model-generated anatomy run, install `requirements-clinical.txt` and
 
 The same optional stack includes a SimpleITK registration runner. It writes a measured Euler3D rigid transform by default, or a BSpline transform when `PHASEMED_REGISTRATION_MODE=deformable`; both results remain provenance-bearing JSON artifacts attached to the PatientModel.
 
+## Demo data
+
+With the server running, populate the workstation with four synthetic chest CT studies (three demo patients, one with a baseline and a follow-up):
+
+```bash
+./.venv/bin/python scripts/seed_demo_data.py
+```
+
+The studies are procedurally generated phantoms, not patient data. Organ shapes are voxelized from the BodyParts3D atlas into a CT series plus a DICOM SEG, and then go through the normal import and compile endpoints, so the resulting PatientModels, meshes, relationships, temporal links, and context bindings come from the real pipeline. The first run downloads about 70 MB of atlas meshes into `.runtime/atlas/bodyparts3d/` (git-ignored, never committed); later runs work offline (`--offline` enforces that). If the download fails, the seeder falls back to an analytic ellipsoid phantom.
+
+To reseed from scratch, stop the server and remove `.runtime/studies`, `.runtime/models`, and `.runtime/phasemed.sqlite3`; keep `.runtime/atlas` to avoid downloading again.
+
+Anatomy credit: BodyParts3D, © The Database Center for Life Science, licensed under [CC Attribution-Share Alike 2.1 Japan](https://creativecommons.org/licenses/by-sa/2.1/jp/).
+
 ## Current product flow
 
 1. Open the local workstation.
