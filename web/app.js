@@ -46,9 +46,10 @@ async function showRevision(version) {
 async function openModelHistory() {
   if (!state.model) { toast("Open a PatientModel first"); return; }
   try {
-    const history = await api(`/api/models/${encodeURIComponent(state.model.id)}/history`);
+    const [history, audit] = await Promise.all([api(`/api/models/${encodeURIComponent(state.model.id)}/history`), api(`/api/models/${encodeURIComponent(state.model.id)}/audit?limit=40`)]);
     $("revisionList").innerHTML = history.revisions.slice().reverse().map((revision) => `<button class="revision-row" data-revision-version="${escapeHtml(revision.version)}"><strong>v${escapeHtml(revision.version)}</strong><span>${escapeHtml(revision.reason)}</span><small>${escapeHtml(revision.created_at)}</small></button>`).join("");
     $("revisionList").querySelectorAll("[data-revision-version]").forEach((button) => button.addEventListener("click", () => showRevision(button.dataset.revisionVersion)));
+    $("auditList").innerHTML = audit.events.length ? audit.events.map((event) => `<div class="audit-row"><div><strong>${escapeHtml(event.type)}</strong><span>${escapeHtml(event.subject)}</span></div><time>${escapeHtml(event.created_at)}</time></div>`).join("") : `<span class="result-placeholder">No recorded actions.</span>`;
     showSheet("historySheet");
     await showRevision(history.current_version);
   } catch (error) { toast(`History unavailable · ${error.message}`); }
