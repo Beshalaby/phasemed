@@ -182,6 +182,9 @@ def test_model_lab_assembles_trains_and_predicts_from_persisted_models(tmp_path:
     assert prediction.status_code == 200 and "contributions" in prediction.json()
     features = client.get("/api/model-lab/features", params={"model_ids": ",".join(model_ids)})
     assert features.status_code == 200 and len(features.json()["rows"]) == 2
+    cohort = client.post("/api/model-lab/cohort-analysis", json={"model_ids": model_ids, "clusters": 2, "seed": 17})
+    assert cohort.status_code == 200 and cohort.json()["row_count"] == 2
+    assert client.get(f"/api/model-lab/cohort-analysis/{cohort.json()['id']}").json()["id"] == cohort.json()["id"]
     csv_export = client.get(f"/api/model-lab/datasets/{dataset.json()['id']}/csv")
     assert csv_export.status_code == 200 and "model_id" in csv_export.text
     evaluation = client.post(f"/api/model-lab/algorithms/{algorithm.json()['id']}/evaluate", json={"model_ids": model_ids, "labels": {model_ids[0]: 0, model_ids[1]: 1}})

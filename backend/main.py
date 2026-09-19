@@ -40,7 +40,7 @@ from .geometry import (
     within_radius,
 )
 from .models import JobState, PatientModel, SpatialQuery, StudySummary, TimelineEntry, now_iso
-from .model_lab import FEATURE_NAMES, FEATURE_SCHEMA, cross_validate, dataset_rows, extract_features, predict as predict_algorithm, train_algorithm
+from .model_lab import FEATURE_NAMES, FEATURE_SCHEMA, analyze_cohort, cross_validate, dataset_rows, extract_features, predict as predict_algorithm, train_algorithm
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -412,7 +412,7 @@ def model_lab_schema() -> dict:
             {"id": "random-forest", "task": "binary", "family": "ensemble", "explainability": "feature-importance-and-tree-votes"},
             {"id": "random-forest", "task": "regression", "family": "ensemble", "explainability": "feature-importance-and-tree-votes"},
         ],
-        "capabilities": ["feature-extraction", "dataset-assembly", "cohort-label-import", "binary-logistic-regression", "linear-regression", "random-forest-classification", "random-forest-regression", "deterministic-validation", "k-fold-cross-validation", "configuration-search", "batch-inference", "evaluation"],
+        "capabilities": ["feature-extraction", "dataset-assembly", "cohort-label-import", "cohort-clustering", "pca-cohort-projection", "anomaly-ranking", "binary-logistic-regression", "linear-regression", "random-forest-classification", "random-forest-regression", "deterministic-validation", "k-fold-cross-validation", "configuration-search", "batch-inference", "evaluation"],
     }
 
 
@@ -550,6 +550,45 @@ def model_lab_features(model_ids: str | None = Query(default=None)) -> dict:
         available = [by_id[model_id] for model_id in requested]
     rows = [{"model_id": model.id, "patient_id": model.patient_id, "study_id": model.study_id, "features": extract_features(model)} for model in available]
     return {"feature_schema": FEATURE_SCHEMA, "rows": rows, "provenance": {"method": "persisted PatientModel feature extraction", "row_count": len(rows)}}
+
+
+@app.post("/api/model-lab/cohort-analysis")
+def model_lab_cohort_analysis(payload: dict) -> dict:
+    requested_ids = payload.get("model_ids")
+    available = persisted_models()
+    if requested_ids is not None:
+        if not isinstance(requested_ids, list) or not requested_ids:
+            raise HTTPException(400, "model_ids must contain at least one PatientModel id")
+        by_id = {model.id: model for model in available}
+        missing = [str(model_id) for model_id in requested_ids if str(model_id) not in by_id]
+        if missing:
+            raise HTTPException(404, f"PatientModel not found: {missing[0]}")
+        available = [by_id[str(model_id)] for model_id in requested_ids]
+    rows = [{"model_id": model.id, "features": extract_features(model)} for model in available]
+    try:
+        analysis = analyze_cohort(rows, clusters=int(payload.get("clusters", 3)), seed=int(payload.get("seed", 17)))
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(400, str(exc)) from exc
+    save_lab_artifact("cohort-analysis", analysis)
+    audit_event("model_lab.cohort.analyzed", analysis["id"], {"row_count": analysis["row_count"], "cluster_count": len(analysis["clusters"])})
+    return analysis
+
+
+@app.get("/api/model-lab/cohort-analysis")
+def list_model_lab_cohort_analyses() -> list[dict]:
+    results = []
+    for path in sorted(lab_root().glob("cohort-analysis-*.json"), reverse=True):
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError:
+            continue
+        results.append({key: payload[key] for key in ("id", "status", "created_at", "row_count", "parameters", "projection", "clusters", "provenance") if key in payload})
+    return results
+
+
+@app.get("/api/model-lab/cohort-analysis/{analysis_id}")
+def model_lab_cohort_analysis_detail(analysis_id: str) -> dict:
+    return load_lab_artifact("cohort-analysis", analysis_id)
 
 
 @app.post("/api/model-lab/train")

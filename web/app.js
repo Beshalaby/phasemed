@@ -334,6 +334,23 @@ async function openModelLab() {
   }
 }
 
+async function analyzeModelLabCohort() {
+  const button = $("analyzeCohort");
+  const modelIds = state.studies.filter((study) => study.model_id).map((study) => study.model_id);
+  if (modelIds.length < 2) { toast("Compile at least two PatientModels for cohort analysis"); return; }
+  button.disabled = true;
+  button.textContent = "Analyzing…";
+  try {
+    const analysis = await api("/api/model-lab/cohort-analysis", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ model_ids: modelIds, clusters: Math.min(4, Math.max(2, Math.round(Math.sqrt(modelIds.length)))) }) });
+    const outlier = [...(analysis.rows || [])].sort((a, b) => b.anomaly_score - a.anomaly_score)[0];
+    const groupSummary = (analysis.clusters || []).map((cluster) => `${cluster.row_count} in group ${cluster.cluster + 1}`).join(" · ");
+    $("modelLabResult").innerHTML = `<div><span>Cohort analysis ready</span><strong>${analysis.row_count} models · ${analysis.clusters.length} groups</strong><small>${escapeHtml(groupSummary)} · PCA explains ${Math.round((analysis.projection?.explained_variance_ratio || []).reduce((sum, value) => sum + value, 0) * 100)}% of standardized variance</small><code>${escapeHtml(analysis.id)}</code>${outlier ? `<small class="model-lab-validation">Highest anomaly score: ${escapeHtml(outlier.model_id)} · ${number(outlier.anomaly_score, 2)}</small>` : ""}</div>`;
+    toast("Cohort structure analyzed and persisted");
+  } catch (error) { toast(`Cohort analysis failed · ${error.message}`); }
+  button.disabled = false;
+  button.textContent = "Analyze cohort";
+}
+
 async function importModelLabels(file) {
   if (!file) return;
   const button = $("importModelLabels");
@@ -485,7 +502,7 @@ function wireEvents() {
   $("contextImport").addEventListener("click", () => state.model ? $("contextInput").click() : toast("Compile a PatientModel before adding context")); $("contextInput").addEventListener("change", (event) => importContextFile(event.target.files[0]));
   $("exportButton").addEventListener("click", () => showSheet("exportSheet")); $("inspectorMenu").addEventListener("click", () => state.model ? showSheet("exportSheet") : toast("Open a PatientModel first"));
   $("exportJson").addEventListener("click", () => exportRepresentation("json")); $("exportGraph").addEventListener("click", () => exportRepresentation("graph")); $("exportContext").addEventListener("click", () => exportRepresentation("context"));
-  $("gatewayButton").addEventListener("click", openGateway); $("emptyGateway").addEventListener("click", openGateway); $("modelLabButton").addEventListener("click", openModelLab); $("modelLabForm").addEventListener("submit", trainModelLab); $("importModelLabels").addEventListener("click", () => $("modelLabLabelFile").click()); $("modelLabLabelFile").addEventListener("change", (event) => { importModelLabels(event.target.files[0]); event.target.value = ""; });
+  $("gatewayButton").addEventListener("click", openGateway); $("emptyGateway").addEventListener("click", openGateway); $("modelLabButton").addEventListener("click", openModelLab); $("modelLabForm").addEventListener("submit", trainModelLab); $("analyzeCohort").addEventListener("click", analyzeModelLabCohort); $("importModelLabels").addEventListener("click", () => $("modelLabLabelFile").click()); $("modelLabLabelFile").addEventListener("change", (event) => { importModelLabels(event.target.files[0]); event.target.value = ""; });
   $("studySearch").addEventListener("input", (event) => { state.search = event.target.value; renderStudies(); }); $("studyFilter").addEventListener("click", () => { state.filterReady = !state.filterReady; $("studyFilter").classList.toggle("active", state.filterReady); renderStudies(); });
   document.querySelectorAll("[data-library-view]").forEach((button) => button.addEventListener("click", () => { document.querySelectorAll("[data-library-view]").forEach((item) => item.classList.toggle("active", item === button)); document.querySelectorAll("[data-rail-panel]").forEach((panel) => panel.classList.toggle("active", panel.dataset.railPanel === button.dataset.libraryView)); }));
   document.querySelectorAll("[data-analysis-tab]").forEach((button) => button.addEventListener("click", () => { document.querySelectorAll("[data-analysis-tab]").forEach((item) => item.classList.toggle("active", item === button)); document.querySelectorAll("[data-analysis-panel]").forEach((panel) => panel.classList.toggle("active", panel.dataset.analysisPanel === button.dataset.analysisTab)); }));

@@ -338,6 +338,52 @@ def cross_validate(
     return {"task": task, "algorithm": algorithm, "fold_count": len(fold_results), "folds": fold_results, "metrics": aggregate, "parameters": parameters, "provenance": {"method": "deterministic-stratified-k-fold", "label_source": "caller-supplied", "row_count": len(rows)}}
 
 
+def analyze_cohort(rows: list[dict[str, Any]], *, clusters: int = 3, seed: int = 17) -> dict[str, Any]:
+    """Project, group, and rank a cohort without requiring clinical labels."""
+    if len(rows) < 2:
+        raise ValueError("At least two PatientModels are required for cohort analysis")
+    if clusters < 2 or clusters > 10:
+        raise ValueError("clusters must be between 2 and 10")
+    matrix = _matrix(rows)
+    means = matrix.mean(axis=0)
+    scales = matrix.std(axis=0)
+    scales[scales < 1e-9] = 1.0
+    normalized = (matrix - means) / scales
+    _, singular_values, components = np.linalg.svd(normalized, full_matrices=False)
+    component_count = min(2, components.shape[0])
+    projection = normalized @ components[:component_count].T
+    if component_count == 1:
+        projection = np.column_stack([projection[:, 0], np.zeros(len(rows))])
+    cluster_count = min(int(clusters), len(rows))
+    rng = np.random.default_rng(int(seed))
+    centers = normalized[rng.choice(len(rows), size=cluster_count, replace=False)].copy()
+    assignments = np.zeros(len(rows), dtype=int)
+    for _ in range(60):
+        distances = ((normalized[:, None, :] - centers[None, :, :]) ** 2).sum(axis=2)
+        next_assignments = np.argmin(distances, axis=1)
+        next_centers = centers.copy()
+        for index in range(cluster_count):
+            members = normalized[next_assignments == index]
+            if len(members):
+                next_centers[index] = members.mean(axis=0)
+        if np.array_equal(assignments, next_assignments):
+            centers = next_centers
+            assignments = next_assignments
+            break
+        centers = next_centers
+        assignments = next_assignments
+    distances = np.sqrt(((normalized - centers[assignments]) ** 2).sum(axis=1))
+    max_distance = float(distances.max()) if len(distances) else 1.0
+    anomaly_scores = distances / max(max_distance, 1e-9)
+    explained = (singular_values[:component_count] ** 2) / max(float((singular_values ** 2).sum()), 1e-9)
+    result_rows = [{"model_id": row["model_id"], "cluster": int(assignments[index]), "anomaly_score": round(float(anomaly_scores[index]), 6), "projection": [round(float(value), 6) for value in projection[index]]} for index, row in enumerate(rows)]
+    summaries = []
+    for index in range(cluster_count):
+        members = [item for item in result_rows if item["cluster"] == index]
+        summaries.append({"cluster": index, "row_count": len(members), "model_ids": [item["model_id"] for item in members], "mean_anomaly_score": round(float(np.mean([item["anomaly_score"] for item in members])), 6) if members else 0.0})
+    return {"id": f"cohort-analysis-{uuid.uuid4().hex[:12]}", "status": "ready", "created_at": _now(), "row_count": len(rows), "parameters": {"clusters": cluster_count, "seed": int(seed)}, "projection": {"method": "standardized-pca", "components": component_count, "explained_variance_ratio": [round(float(value), 6) for value in explained]}, "clusters": summaries, "rows": result_rows, "provenance": {"method": "patient-model-feature-vector", "feature_engine": "phasemed-model-lab-0.3", "label_source": "none", "deterministic_seed": int(seed)}}
+
+
 def train_forest(
     rows: list[dict[str, Any]],
     *,

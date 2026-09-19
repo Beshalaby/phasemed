@@ -76,6 +76,8 @@ The same optional stack includes a SimpleITK registration runner. It writes a me
 - `POST /api/model-lab/datasets` — assemble a labeled feature dataset from persisted PatientModels
 - `POST /api/model-lab/datasets/import` — import a CSV/JSON label cohort while resolving features from persisted PatientModels
 - `GET /api/model-lab/features` — produce a bulk feature table for all or selected PatientModels
+- `POST /api/model-lab/cohort-analysis` — project, cluster, and rank anomalies across unlabeled PatientModels
+- `GET /api/model-lab/cohort-analysis` and `GET /api/model-lab/cohort-analysis/{analysis_id}` — inspect persisted cohort analyses
 - `GET /api/model-lab/datasets/{dataset_id}/csv` — export a feature dataset for external analysis
 - `POST /api/model-lab/train` — train an auditable local classification or regression algorithm from a dataset
 - `POST /api/model-lab/search` — compare a bounded, reproducible configuration sweep and persist the selected algorithm
@@ -104,7 +106,8 @@ source-image statistics. Labels are caller-supplied and retained in dataset
 provenance; the local workbench never turns an imaging heuristic into a
 clinical label automatically. It supports transparent NumPy logistic
 classification, linear regression, and deterministic bootstrap random forests
-for classification or regression. Every run persists its algorithm
+for classification or regression, plus unlabeled standardized PCA projection,
+deterministic k-means cohort grouping, and anomaly ranking. Every run persists its algorithm
 configuration, training rows, deterministic validation metrics, feature
 importance, tree structure where applicable, and per-prediction explanations.
 The workstation can also run cohort-wide inference and deterministic

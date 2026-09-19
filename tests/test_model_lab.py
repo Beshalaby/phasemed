@@ -1,4 +1,4 @@
-from backend.model_lab import cross_validate, dataset_rows, extract_features, predict, train_binary, train_forest, train_regression
+from backend.model_lab import analyze_cohort, cross_validate, dataset_rows, extract_features, predict, train_binary, train_forest, train_regression
 from backend.models import BoundingBox, Geometry, PatientModel, PatientObject, Relationship, TemporalLink
 
 
@@ -103,3 +103,15 @@ def test_cross_validation_is_deterministic_and_stratified():
     assert first["fold_count"] == 4
     assert first["metrics"] == second["metrics"]
     assert all(len(fold["model_ids"]) == 2 for fold in first["folds"])
+
+
+def test_cohort_analysis_projects_clusters_and_ranks_anomalies():
+    models = [model(f"cluster{i}", i % 2 == 1, float(i * 10)) for i in range(1, 7)]
+    rows = [{"model_id": item.id, "features": extract_features(item)} for item in models]
+    first = analyze_cohort(rows, clusters=3, seed=17)
+    second = analyze_cohort(rows, clusters=3, seed=17)
+    assert first["row_count"] == 6
+    assert len(first["clusters"]) == 3
+    assert len(first["rows"]) == 6
+    assert first["rows"] == second["rows"]
+    assert all(len(item["projection"]) == 2 and 0 <= item["anomaly_score"] <= 1 for item in first["rows"])
