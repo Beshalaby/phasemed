@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import math
 import re
+from itertools import product
+from typing import Any
 
 from .models import PatientModel, TemporalLink
 
@@ -12,6 +14,46 @@ def _normalized_label(value: str) -> str:
 
 def _max_extent_mm(geometry) -> float:
     return max(abs(geometry.bounding_box.max[index] - geometry.bounding_box.min[index]) for index in range(3))
+
+
+def _rigid_transform_point(point: tuple[float, float, float], parameters: list[float], fixed_parameters: list[float]) -> tuple[float, float, float]:
+    """Apply a SimpleITK Euler3D transform to one patient-space point."""
+    if len(parameters) != 6 or len(fixed_parameters) < 4:
+        raise ValueError("Euler3D registration payload must contain six parameters and four fixed parameters")
+    try:
+        import SimpleITK as sitk
+    except ImportError as exc:  # pragma: no cover - exercised only without the optional clinical stack
+        raise ValueError("SimpleITK is required to apply an Euler3D registration result") from exc
+    transform = sitk.Euler3DTransform()
+    transform.SetParameters(tuple(float(value) for value in parameters))
+    transform.SetFixedParameters(tuple(float(value) for value in fixed_parameters[:4]))
+    result = transform.TransformPoint(tuple(float(value) for value in point))
+    return tuple(float(value) for value in result)
+
+
+def _registered_prior_model(prior: PatientModel, registration: dict[str, Any] | None) -> PatientModel:
+    """Return a comparison-only copy of the prior model in current-study space.
+
+    The persisted prior model remains unchanged. Deformable results are left
+    untouched until their displacement field is persisted by the adapter.
+    """
+    if not registration or registration.get("method") != "SimpleITK-Euler3D":
+        return prior
+    parameters = registration.get("transform_parameters")
+    fixed_parameters = registration.get("transform_fixed_parameters")
+    if not isinstance(parameters, list) or not isinstance(fixed_parameters, list):
+        return prior
+    transformed = prior.model_copy(deep=True)
+    for obj in transformed.objects:
+        geometry = obj.geometry
+        if not geometry:
+            continue
+        corners = product(*[(geometry.bounding_box.min[index], geometry.bounding_box.max[index]) for index in range(3)])
+        transformed_points = [_rigid_transform_point(tuple(point), parameters, fixed_parameters) for point in corners]
+        geometry.centroid = _rigid_transform_point(geometry.centroid, parameters, fixed_parameters)
+        geometry.bounding_box.min = tuple(min(point[index] for point in transformed_points) for index in range(3))
+        geometry.bounding_box.max = tuple(max(point[index] for point in transformed_points) for index in range(3))
+    return transformed
 
 
 def match_objects(current: PatientModel, prior: PatientModel) -> list[TemporalLink]:
@@ -65,8 +107,8 @@ def match_objects(current: PatientModel, prior: PatientModel) -> list[TemporalLi
     return links
 
 
-def compare_models(current: PatientModel, prior: PatientModel) -> dict:
-    links = match_objects(current, prior)
+def compare_models(current: PatientModel, prior: PatientModel, registration: dict[str, Any] | None = None) -> dict:
+    links = match_objects(current, _registered_prior_model(prior, registration))
     current.temporal_links = links
     links_by_object: dict[str, list[TemporalLink]] = {}
     for link in links:

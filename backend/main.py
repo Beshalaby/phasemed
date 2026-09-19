@@ -244,12 +244,13 @@ def attach_temporal_history(model: PatientModel) -> PatientModel:
     if not prior_models:
         return model
     prior = sorted(prior_models, key=lambda item: item.created_at)[-1]
-    comparison = compare_models(model, prior)
     registration = run_registration(STUDY_ROOT / model.study_id, STUDY_ROOT / prior.study_id, model.id, prior.id)
+    registration_payload = registration.get("result") if registration.get("status") == "completed" else None
+    comparison = compare_models(model, prior, registration_payload)
     model.metadata["prior_model_id"] = prior.id
-    model.metadata["temporal_match_method"] = "label-and-centroid-local-match"
+    model.metadata["temporal_match_method"] = "label-and-centroid-rigid-registered" if registration_payload and registration_payload.get("method") == "SimpleITK-Euler3D" else "label-and-centroid-local-match"
     model.metadata["registration_adapter"] = registration
-    model.capabilities["temporal_registration"] = "available" if registration.get("status") == "completed" else "partial"
+    model.capabilities["temporal_registration"] = "available" if registration_payload and registration_payload.get("method") == "SimpleITK-Euler3D" else "partial"
     model.timeline = [
         TimelineEntry(id=f"timeline:{candidate.id}", study_id=candidate.study_id, date=candidate.created_at, label=candidate.study_id, model_id=candidate.id)
         for candidate in sorted(prior_models + [model], key=lambda item: item.created_at)

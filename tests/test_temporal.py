@@ -21,3 +21,21 @@ def test_temporal_match_records_resolved_prior_object():
     result = compare_models(current, prior)
     assert result["links"][0]["type"] == "resolved"
     assert result["links"][0]["changes"]["reason"] == "not matched in current study"
+
+
+def test_temporal_match_applies_completed_rigid_registration():
+    current = make_model("current", 100)
+    prior = make_model("prior", 100)
+    prior.objects[0].geometry.centroid = (0.0, 0.0, 0.0)
+    prior.objects[0].geometry.bounding_box.min = (-1.0, -1.0, -1.0)
+    prior.objects[0].geometry.bounding_box.max = (1.0, 1.0, 1.0)
+    current.objects[0].geometry.centroid = (10.0, 0.0, 0.0)
+    current.objects[0].geometry.bounding_box.min = (9.0, -1.0, -1.0)
+    current.objects[0].geometry.bounding_box.max = (11.0, 1.0, 1.0)
+    registration = {
+        "method": "SimpleITK-Euler3D",
+        "transform_parameters": [0.0, 0.0, 0.0, 10.0, 0.0, 0.0],
+        "transform_fixed_parameters": [0.0, 0.0, 0.0, 0.0],
+    }
+    result = compare_models(current, prior, registration)
+    assert result["links"][0]["changes"]["centroid_distance_mm"] == 0.0
