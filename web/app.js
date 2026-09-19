@@ -427,6 +427,29 @@ async function batchPredictModel(algorithmId, datasetId, button) {
   }
 }
 
+async function inspectModelLabQuality() {
+  const button = $("inspectQuality");
+  const task = $("modelLabTask").value;
+  try {
+    let dataset = state.modelLabDataset?.task === task ? state.modelLabDataset : null;
+    if (!dataset) {
+      const labels = {};
+      document.querySelectorAll("[data-lab-label]").forEach((input) => { if (input.value !== "") labels[input.dataset.labLabel] = Number(input.value); });
+      const modelIds = Object.keys(labels);
+      if (modelIds.length < 2) { toast("Choose labels for at least two compiled models first"); return; }
+      dataset = await api("/api/model-lab/datasets", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ task, name: $("modelLabName").value || "Quality review cohort", model_ids: modelIds, labels }) });
+      state.modelLabDataset = dataset;
+    }
+    button.disabled = true; button.textContent = "Checking…";
+    const quality = await api(`/api/model-lab/datasets/${encodeURIComponent(dataset.id)}/quality`);
+    const flagged = Object.entries(quality.features || {}).filter(([, stats]) => stats.zero_count === quality.row_count).length;
+    const labelSummary = quality.label_summary?.task === "binary" ? `${quality.label_summary.counts["0"] || 0} negative · ${quality.label_summary.counts["1"] || 0} positive` : `Outcome mean ${number(quality.label_summary?.mean, 2)} · range ${number(quality.label_summary?.min, 2)}–${number(quality.label_summary?.max, 2)}`;
+    $("modelLabResult").innerHTML = `<div><span>Cohort quality</span><strong>${quality.row_count} rows · ${quality.feature_count} features</strong><small>${labelSummary} · ${flagged} all-zero feature${flagged === 1 ? "" : "s"}</small><code>${escapeHtml(quality.dataset_id)}</code></div>`;
+    toast("Cohort quality checked");
+  } catch (error) { toast(`Quality check failed · ${error.message}`); }
+  button.disabled = false; button.textContent = "Check quality";
+}
+
 async function trainModelLab(event) {
   event.preventDefault();
   const labels = {};
@@ -440,6 +463,7 @@ async function trainModelLab(event) {
   try {
     let dataset = importedDataset;
     if (!dataset) dataset = await api("/api/model-lab/datasets", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ task, name: $("modelLabName").value || "Local clinical baseline", model_ids: modelIds, labels }) });
+    state.modelLabDataset = dataset;
     const selectedAlgorithm = $("modelLabAlgorithm").value;
     const searchPayload = { dataset_id: dataset.id, name: $("modelLabName").value || "Local clinical baseline" };
     if (selectedAlgorithm !== "auto") {
@@ -522,7 +546,7 @@ function wireEvents() {
   $("contextImport").addEventListener("click", () => state.model ? $("contextInput").click() : toast("Compile a PatientModel before adding context")); $("contextInput").addEventListener("change", (event) => importContextFile(event.target.files[0]));
   $("exportButton").addEventListener("click", () => showSheet("exportSheet")); $("historyButton").addEventListener("click", openModelHistory); $("inspectorMenu").addEventListener("click", () => state.model ? showSheet("exportSheet") : toast("Open a PatientModel first"));
   $("exportJson").addEventListener("click", () => exportRepresentation("json")); $("exportGraph").addEventListener("click", () => exportRepresentation("graph")); $("exportContext").addEventListener("click", () => exportRepresentation("context"));
-  $("gatewayButton").addEventListener("click", openGateway); $("emptyGateway").addEventListener("click", openGateway); $("modelLabButton").addEventListener("click", openModelLab); $("modelLabForm").addEventListener("submit", trainModelLab); $("analyzeCohort").addEventListener("click", analyzeModelLabCohort); $("importModelLabels").addEventListener("click", () => $("modelLabLabelFile").click()); $("modelLabLabelFile").addEventListener("change", (event) => { importModelLabels(event.target.files[0]); event.target.value = ""; });
+  $("gatewayButton").addEventListener("click", openGateway); $("emptyGateway").addEventListener("click", openGateway); $("modelLabButton").addEventListener("click", openModelLab); $("modelLabForm").addEventListener("submit", trainModelLab); $("inspectQuality").addEventListener("click", inspectModelLabQuality); $("analyzeCohort").addEventListener("click", analyzeModelLabCohort); $("importModelLabels").addEventListener("click", () => $("modelLabLabelFile").click()); $("modelLabLabelFile").addEventListener("change", (event) => { importModelLabels(event.target.files[0]); event.target.value = ""; });
   $("studySearch").addEventListener("input", (event) => { state.search = event.target.value; renderStudies(); }); $("studyFilter").addEventListener("click", () => { state.filterReady = !state.filterReady; $("studyFilter").classList.toggle("active", state.filterReady); renderStudies(); });
   document.querySelectorAll("[data-library-view]").forEach((button) => button.addEventListener("click", () => { document.querySelectorAll("[data-library-view]").forEach((item) => item.classList.toggle("active", item === button)); document.querySelectorAll("[data-rail-panel]").forEach((panel) => panel.classList.toggle("active", panel.dataset.railPanel === button.dataset.libraryView)); }));
   document.querySelectorAll("[data-analysis-tab]").forEach((button) => button.addEventListener("click", () => { document.querySelectorAll("[data-analysis-tab]").forEach((item) => item.classList.toggle("active", item === button)); document.querySelectorAll("[data-analysis-panel]").forEach((panel) => panel.classList.toggle("active", panel.dataset.analysisPanel === button.dataset.analysisTab)); }));

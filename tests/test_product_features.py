@@ -163,6 +163,8 @@ def test_model_lab_assembles_trains_and_predicts_from_persisted_models(tmp_path:
 
     dataset = client.post("/api/model-lab/datasets", json={"name": "Local validation", "model_ids": model_ids, "labels": {model_ids[0]: 0, model_ids[1]: 1}})
     assert dataset.status_code == 200 and dataset.json()["provenance"]["label_source"] == "caller-supplied"
+    quality = client.get(f"/api/model-lab/datasets/{dataset.json()['id']}/quality")
+    assert quality.status_code == 200 and quality.json()["row_count"] == 2
     uploaded = client.post("/api/model-lab/datasets/import", data={"task": "binary", "name": "Uploaded labels"}, files={"file": ("labels.csv", f"model_id,label\n{model_ids[0]},0\n{model_ids[1]},1\n".encode(), "text/csv")})
     assert uploaded.status_code == 200 and uploaded.json()["provenance"]["label_source"] == "caller-supplied-upload"
     algorithm = client.post("/api/model-lab/train", json={"dataset_id": dataset.json()["id"], "name": "Change screen", "iterations": 40})
@@ -191,6 +193,7 @@ def test_model_lab_assembles_trains_and_predicts_from_persisted_models(tmp_path:
     assert evaluation.status_code == 200 and evaluation.json()["provenance"]["label_source"] == "caller-supplied"
     regression_dataset = client.post("/api/model-lab/datasets", json={"task": "regression", "name": "Volume outcome", "model_ids": model_ids, "labels": {model_ids[0]: 10.0, model_ids[1]: 20.0}})
     assert regression_dataset.status_code == 200 and regression_dataset.json()["task"] == "regression"
+    assert client.get(f"/api/model-lab/datasets/{dataset.json()['id']}/quality", params={"baseline_dataset_id": dataset.json()["id"]}).json()["drift"]["object_count"]["flagged"] is False
     regression_algorithm = client.post("/api/model-lab/train", json={"dataset_id": regression_dataset.json()["id"], "iterations": 40})
     assert regression_algorithm.status_code == 200 and regression_algorithm.json()["type"] == "linear-regression"
     regression_evaluation = client.post(f"/api/model-lab/algorithms/{regression_algorithm.json()['id']}/evaluate", json={"model_ids": model_ids, "labels": {model_ids[0]: 10.0, model_ids[1]: 20.0}})

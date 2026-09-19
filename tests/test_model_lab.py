@@ -1,4 +1,4 @@
-from backend.model_lab import analyze_cohort, cross_validate, dataset_rows, extract_features, predict, train_binary, train_forest, train_regression
+from backend.model_lab import analyze_cohort, cross_validate, dataset_rows, extract_features, predict, summarize_dataset, train_binary, train_forest, train_regression
 from backend.models import BoundingBox, Geometry, PatientModel, PatientObject, Relationship, TemporalLink
 
 
@@ -115,3 +115,14 @@ def test_cohort_analysis_projects_clusters_and_ranks_anomalies():
     assert len(first["rows"]) == 6
     assert first["rows"] == second["rows"]
     assert all(len(item["projection"]) == 2 and 0 <= item["anomaly_score"] <= 1 for item in first["rows"])
+
+
+def test_dataset_quality_reports_distribution_and_drift():
+    models = [model(f"quality{i}", i % 2 == 1, float(i * 10)) for i in range(1, 5)]
+    rows = dataset_rows(models, {item.id: int(item.objects[-1].type == "finding") for item in models})
+    summary = summarize_dataset({"id": "current", "task": "binary", "rows": rows})
+    shifted = [{**row, "features": {**row["features"], "total_volume_mm3": row["features"]["total_volume_mm3"] + 1000}} for row in rows]
+    drift = summarize_dataset({"id": "shifted", "task": "binary", "rows": shifted}, {"id": "current", "task": "binary", "rows": rows})
+    assert summary["row_count"] == 4
+    assert summary["label_summary"]["positive_rate"] == 0.5
+    assert drift["drift"]["total_volume_mm3"]["flagged"] is True

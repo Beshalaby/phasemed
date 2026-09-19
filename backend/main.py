@@ -40,7 +40,7 @@ from .geometry import (
     within_radius,
 )
 from .models import JobState, PatientModel, SpatialQuery, StudySummary, TimelineEntry, now_iso
-from .model_lab import FEATURE_NAMES, FEATURE_SCHEMA, analyze_cohort, cross_validate, dataset_rows, extract_features, predict as predict_algorithm, train_algorithm
+from .model_lab import FEATURE_NAMES, FEATURE_SCHEMA, analyze_cohort, cross_validate, dataset_rows, extract_features, predict as predict_algorithm, summarize_dataset, train_algorithm
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -578,6 +578,15 @@ def list_model_lab_datasets() -> list[dict]:
 @app.get("/api/model-lab/datasets/{dataset_id}")
 def model_lab_dataset(dataset_id: str) -> dict:
     return load_lab_artifact("dataset", dataset_id)
+
+
+@app.get("/api/model-lab/datasets/{dataset_id}/quality")
+def model_lab_dataset_quality(dataset_id: str, baseline_dataset_id: str | None = Query(default=None)) -> dict:
+    dataset = load_lab_artifact("dataset", dataset_id)
+    baseline = load_lab_artifact("dataset", baseline_dataset_id) if baseline_dataset_id else None
+    if baseline and baseline.get("task") != dataset.get("task"):
+        raise HTTPException(400, "baseline dataset task must match the selected dataset")
+    return summarize_dataset(dataset, baseline)
 
 
 @app.get("/api/model-lab/datasets/{dataset_id}/csv")

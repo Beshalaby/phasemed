@@ -115,6 +115,55 @@ def _matrix(rows: list[dict[str, Any]]) -> np.ndarray:
     return np.asarray([[float(row["features"].get(name, 0.0)) for name in FEATURE_NAMES] for row in rows], dtype=np.float64)
 
 
+def summarize_dataset(dataset: dict[str, Any], baseline: dict[str, Any] | None = None) -> dict[str, Any]:
+    """Return deterministic cohort quality and optional feature-drift statistics."""
+    rows = list(dataset.get("rows") or [])
+    matrix = _matrix(rows) if rows else np.empty((0, len(FEATURE_NAMES)), dtype=np.float64)
+    feature_stats = {}
+    for index, name in enumerate(FEATURE_NAMES):
+        values = matrix[:, index] if len(matrix) else np.asarray([], dtype=np.float64)
+        feature_stats[name] = {
+            "mean": round(float(np.mean(values)) if len(values) else 0.0, 6),
+            "std": round(float(np.std(values)) if len(values) else 0.0, 6),
+            "min": round(float(np.min(values)) if len(values) else 0.0, 6),
+            "max": round(float(np.max(values)) if len(values) else 0.0, 6),
+            "zero_count": int(np.sum(np.isclose(values, 0.0))) if len(values) else 0,
+        }
+    labels = [row.get("label") for row in rows]
+    label_summary: dict[str, Any]
+    if dataset.get("task") == "binary":
+        counts = Counter(str(int(label)) for label in labels)
+        label_summary = {"task": "binary", "counts": {key: counts.get(key, 0) for key in ("0", "1")}, "positive_rate": round(sum(int(label) for label in labels) / max(1, len(labels)), 6)}
+    else:
+        numeric = np.asarray([float(label) for label in labels], dtype=np.float64)
+        label_summary = {"task": "regression", "mean": round(float(np.mean(numeric)) if len(numeric) else 0.0, 6), "std": round(float(np.std(numeric)) if len(numeric) else 0.0, 6), "min": round(float(np.min(numeric)) if len(numeric) else 0.0, 6), "max": round(float(np.max(numeric)) if len(numeric) else 0.0, 6)}
+    result: dict[str, Any] = {
+        "dataset_id": dataset.get("id"),
+        "task": dataset.get("task"),
+        "row_count": len(rows),
+        "feature_count": len(FEATURE_NAMES),
+        "label_summary": label_summary,
+        "features": feature_stats,
+        "provenance": {"method": "deterministic cohort quality summary", "feature_schema": FEATURE_NAMES},
+    }
+    if baseline:
+        baseline_rows = list(baseline.get("rows") or [])
+        baseline_matrix = _matrix(baseline_rows) if baseline_rows else np.empty((0, len(FEATURE_NAMES)), dtype=np.float64)
+        drift = {}
+        for index, name in enumerate(FEATURE_NAMES):
+            current_values = matrix[:, index] if len(matrix) else np.asarray([], dtype=np.float64)
+            baseline_values = baseline_matrix[:, index] if len(baseline_matrix) else np.asarray([], dtype=np.float64)
+            current_mean = float(np.mean(current_values)) if len(current_values) else 0.0
+            baseline_mean = float(np.mean(baseline_values)) if len(baseline_values) else 0.0
+            pooled_std = float(np.sqrt((np.var(current_values) + np.var(baseline_values)) / 2.0)) if len(current_values) and len(baseline_values) else 0.0
+            standardized_difference = (current_mean - baseline_mean) / pooled_std if pooled_std > 1e-12 else (0.0 if abs(current_mean - baseline_mean) <= 1e-12 else 1.0)
+            drift[name] = {"baseline_mean": round(baseline_mean, 6), "current_mean": round(current_mean, 6), "standardized_mean_difference": round(float(standardized_difference), 6), "flagged": abs(standardized_difference) >= 0.5}
+        result["baseline_dataset_id"] = baseline.get("id")
+        result["drift"] = drift
+        result["provenance"]["drift_method"] = "absolute standardized mean difference; flagged at |SMD| >= 0.5"
+    return result
+
+
 def _sigmoid(values: np.ndarray) -> np.ndarray:
     clipped = np.clip(values, -40.0, 40.0)
     return 1.0 / (1.0 + np.exp(-clipped))
