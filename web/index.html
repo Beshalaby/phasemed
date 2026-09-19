@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#fbfbfd" />
+  <meta name="description" content="Phasemed — a spatial patient model workstation." />
+  <title>Phasemed · Spatial patient model</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='9' fill='%23fbfbfd'/%3E%3Crect x='7' y='9' width='15' height='6' rx='3' transform='rotate(-45 7 9)' fill='%231d1d1f'/%3E%3Crect x='13' y='16' width='15' height='6' rx='3' transform='rotate(-45 13 16)' fill='%231d1d1f'/%3E%3C/svg%3E" />
+  <link rel="stylesheet" href="/assets/styles.css" />
+</head>
+<body>
+  <div class="app-shell">
+    <header class="topbar">
+      <a class="brand" href="/" aria-label="Phasemed"><span class="brand-glyph" aria-hidden="true"><i></i><i></i></span><span class="brand-wordmark">Phasemed</span></a>
+      <div class="patient-route" id="patientRoute"><span id="headerPatient"></span><b>›</b><span id="studyTitle"></span><b>›</b><span id="modelCrumb"></span></div>
+      <div class="topbar-actions">
+        <button class="round-action" id="gatewayButton" aria-label="Open DICOM gateway" title="DICOM gateway">⌁</button>
+        <button class="round-action" id="themeButton" aria-label="Toggle display contrast" title="Display contrast">◐</button>
+        <button class="quiet-action" id="contextImport">Attach evidence</button>
+        <button class="quiet-action" id="modelLabButton">Model lab</button>
+        <button class="primary-action" id="exportButton" disabled>Export</button>
+      </div>
+    </header>
+
+    <div class="commandbar" id="commandbar">
+      <div class="series-control" id="seriesControl"><span class="file-icon">▧</span><strong id="seriesTitle"></strong><span id="seriesChevron">⌄</span></div>
+      <div class="command-separator"></div>
+      <button class="tool-control active" data-tool="select"><span>⌁</span>Select</button>
+      <button class="tool-control" data-tool="rotate"><span>↻</span>Rotate</button>
+      <button class="tool-control" data-tool="zoom"><span>⌕</span>Zoom</button>
+      <button class="tool-control" data-tool="measure"><span>╱</span>Measure</button>
+      <button class="tool-control" data-tool="path"><span>⌇</span>Path</button>
+      <div class="command-separator"></div>
+      <button class="tool-control" id="sceneNeighbors"><span>⋯</span>Relations</button>
+      <button class="tool-control" id="sceneIsolate"><span>◉</span>Isolate</button>
+      <button class="tool-control" id="sceneFit"><span>⌗</span>Fit</button>
+      <button class="tool-control" id="resetButton"><span>↺</span>Reset</button>
+      <div class="command-spacer"></div>
+      <span class="linked-state" id="linkedState"><i></i></span>
+      <div class="view-switch" role="tablist" aria-label="Workspace views">
+        <button class="mode-item active" data-mode="model" role="tab">Model</button>
+        <button class="mode-item" data-mode="slices" role="tab">Review</button>
+        <button class="mode-item" data-mode="timeline" role="tab">Change</button>
+        <button class="mode-item" data-mode="context" role="tab">Context</button>
+        <button class="mode-item" data-mode="procedure" role="tab">Procedure</button>
+        <button class="mode-item" data-mode="hologram" role="tab">Hologram</button>
+      </div>
+    </div>
+
+    <main class="workstation" id="workstation">
+      <aside class="left-rail">
+        <div class="rail-patient"><div><strong id="railPatient">Studies</strong><span id="studySubtitle">Import a study</span></div><button id="newStudy" aria-label="Import a new study" title="Import a new study">＋</button></div>
+        <div class="rail-tabs" role="tablist" aria-label="Library sections"><button class="active" data-library-view="studies">Studies</button><button data-library-view="objects">Findings</button><button data-library-view="sources">Evidence</button></div>
+        <div class="rail-search"><span>⌕</span><input id="studySearch" placeholder="Search studies" autocomplete="off" /><button id="studyFilter" aria-label="Show ready studies only" title="Ready only">≡</button></div>
+        <div class="rail-view active" data-rail-panel="studies"><div class="study-list" id="studyList"></div></div>
+        <div class="rail-view" data-rail-panel="objects"><div class="rail-list" id="objectRail"><div class="rail-placeholder">Open a compiled model to browse objects.</div></div></div>
+        <div class="rail-view" data-rail-panel="sources"><div class="rail-list" id="sourceRail"><div class="rail-placeholder">No provenance sources loaded.</div></div></div>
+        <div class="rail-footer"><button class="rail-import" id="importButton"><span>＋</span>Import DICOM</button><button class="rail-import secondary" id="folderButton">Folder</button><button class="rail-icon" id="capabilityInfoLibrary" aria-label="View capabilities" title="Capabilities">i</button></div>
+      </aside>
+
+      <section class="viewport-stage" id="visualArea">
+        <div class="empty-state" id="emptyState"><div class="clinical-symbol" aria-hidden="true"><i></i><i></i><i></i></div><h1>Open a study</h1><div class="empty-actions"><button class="primary-action" id="emptyImport">Open DICOM study</button><button class="quiet-action" id="emptyGateway">Connect gateway</button></div></div>
+
+        <section class="mode-panel model-view" id="modelView">
+          <canvas id="sceneCanvas" aria-label="Patient model scene"></canvas>
+          <div class="viewport-topline"><div><span id="sceneSummary">Select an object to inspect it</span></div></div>
+          <div class="model-orientation"><span>A</span><div><b>R</b><i></i><b>L</b></div><span>P</span></div>
+          <div class="model-scale"><span></span><b>50 mm</b></div>
+          <div class="scene-readout"><span id="sceneCount">No geometry loaded</span><span id="sceneCoordinate">LPS patient coordinates</span></div>
+          <div class="scene-callout hidden" id="sceneCallout"><strong id="calloutTitle">Object</strong><span id="calloutText">Selected</span></div>
+          <div class="measure-readout hidden" id="measureReadout"><span>MEASUREMENT</span><strong id="measureValue">—</strong><button id="clearMeasure">×</button></div>
+        </section>
+
+        <section class="mode-panel slice-view" id="sliceView">
+          <div class="diagnostic-grid">
+            <figure class="dicom-viewport"><header><div><strong>Axial</strong><span>Source plane</span></div><button data-expand-view="axial">⛶</button></header><div class="dicom-image"><img id="axialImage" alt="Axial source image" /><span class="crosshair" id="axialCrosshair"></span><span class="orientation top">A</span><span class="orientation right">L</span></div><figcaption><span id="axialCaption">—</span><span id="axialWl">W:400 / L:40</span></figcaption></figure>
+            <figure class="dicom-viewport"><header><div><strong>Coronal</strong><span>Reconstructed</span></div><button data-expand-view="coronal">⛶</button></header><div class="dicom-image"><img id="coronalImage" alt="Coronal source image" /><span class="crosshair" id="coronalCrosshair"></span><span class="orientation top">S</span><span class="orientation right">L</span></div><figcaption><span id="coronalCaption">—</span><span>Linked cursor</span></figcaption></figure>
+            <figure class="dicom-viewport"><header><div><strong>Sagittal</strong><span>Reconstructed</span></div><button data-expand-view="sagittal">⛶</button></header><div class="dicom-image"><img id="sagittalImage" alt="Sagittal source image" /><span class="crosshair" id="sagittalCrosshair"></span><span class="orientation top">S</span><span class="orientation right">A</span></div><figcaption><span id="sagittalCaption">—</span><span>Linked cursor</span></figcaption></figure>
+            <figure class="dicom-viewport model-preview"><header><div><strong>Spatial overview</strong><span>Object map</span></div><button data-mode-jump="model">⛶</button></header><canvas id="mprModelCanvas" aria-label="Spatial model preview"></canvas><figcaption><span id="sliceMeta"></span><span>Object linked</span></figcaption></figure>
+          </div>
+          <div class="image-console"><label><span>Slice</span><input id="sliceInput" type="range" min="0" max="0" value="0" /><output id="sliceOutput">0 / 0</output></label><label><span>Window</span><input id="windowWidthInput" type="range" min="1" max="4000" step="1" value="400" /><output id="windowWidthOutput">400 HU</output></label><label><span>Level</span><input id="windowCenterInput" type="range" min="-2000" max="3000" step="1" value="40" /><output id="windowCenterOutput">40 HU</output></label></div>
+        </section>
+
+        <section class="mode-panel timeline-view" id="timelineView"><header class="section-intro"><div><h2>Longitudinal comparison</h2></div><span id="timelineStatus"></span></header><div class="change-stage"><div class="timeline-rail" id="timelineRail"></div><div class="timeline-detail" id="timelineDetail"><span class="timeline-empty">No comparison available.</span></div></div></section>
+
+        <section class="mode-panel context-view" id="contextView"><header class="section-intro"><div><h2>Evidence</h2></div><button class="quiet-action" id="contextAskModel">Ask model</button></header><form class="context-search" id="contextSearchForm"><label><span>⌕</span><input id="contextQueryInput" placeholder="Search evidence" autocomplete="off" /></label><button class="primary-action">Search</button></form><div class="context-list" id="contextList"></div></section>
+
+        <section class="mode-panel procedure-view" id="procedureView"><div class="procedure-sidebar"><h2>Trajectory analysis</h2><p>Place an entry point and target. Length, intersections, and minimum clearances are computed from model geometry.</p><button class="primary-action" id="startPath">Draw path</button><div class="procedure-result" id="procedureResult"><span class="result-placeholder">No trajectory calculated.</span></div><small>Planning visualization only. Not clinically validated.</small></div><div class="procedure-canvas"><canvas id="procedureCanvas" aria-label="Procedure path preview"></canvas><div class="path-hint">ENTRY → TARGET</div></div></section>
+
+        <section class="mode-panel hologram-view" id="hologramView"><div class="hologram-header"><div><h2>Four-view object render</h2></div></div><div class="hologram-frame"><canvas id="hologramCanvas" aria-label="Four view hologram preview"></canvas></div></section>
+
+        <div class="timeline-strip" id="timelineStrip"><button id="timelinePlay" aria-label="Play timeline">▶</button><div><strong id="timelineLabel">Current study</strong></div><div class="timeline-slider" id="timelineSlider"><span id="timelineFill"></span><input id="timelineInput" type="range" min="0" max="100" value="100" aria-label="Model time" /></div><div class="timeline-ends"><span>PRIOR</span><span>CURRENT</span></div></div>
+      </section>
+
+      <aside class="right-rail" id="rightRail">
+        <div class="analysis-head"><div><h2 id="inspectorTitle">Nothing selected</h2></div><button id="inspectorMenu" aria-label="Model actions" title="Model actions">•••</button></div>
+        <div class="analysis-tabs" role="tablist" aria-label="Analysis panels"><button class="active" data-analysis-tab="object">Object</button><button data-analysis-tab="graph">Graph</button><button data-analysis-tab="evidence">Evidence</button></div>
+        <div class="analysis-body active" data-analysis-panel="object"><div class="inspector-content" id="inspectorContent"><div class="inspector-empty"><span></span><p>Select anatomy in the model or library.</p></div></div></div>
+        <div class="analysis-body" data-analysis-panel="graph"><div id="graphInspector" class="graph-inspector"><div class="rail-placeholder">Select an object to inspect its spatial graph.</div></div></div>
+        <div class="analysis-body" data-analysis-panel="evidence"><div id="evidenceInspector" class="evidence-inspector"><div class="rail-placeholder">No evidence selected.</div></div></div>
+        <div class="model-facts"><div><span>Objects</span><strong id="metricObjects">—</strong></div><div><span>Relations</span><strong id="metricRelationships">—</strong></div><div><span>Sources</span><strong id="metricSources">—</strong></div><div><span>State</span><strong id="metricState">Waiting</strong></div></div>
+        <span class="metric-detail" id="metricStateDetail">Import a study to begin</span>
+        <div class="capability-panel"><div class="capability-head"><span>CAPABILITIES</span><button id="capabilityInfoInspector">Details</button></div><div id="capabilityRows"></div></div>
+      </aside>
+    </main>
+
+    <nav class="mobile-tabbar" aria-label="Mobile workspace navigation">
+      <button class="active" data-mobile-panel="workspace"><span>⌂</span><small>Viewport</small></button>
+      <button data-mobile-panel="studies"><span>▤</span><small>Studies</small></button>
+      <button data-mobile-panel="analysis"><span>⌁</span><small>Findings</small></button>
+      <button data-mobile-panel="more"><span>•••</span><small>Tools</small></button>
+    </nav>
+
+    <input id="dicomInput" type="file" multiple accept=".dcm,.dicom,.zip,application/dicom,application/zip" hidden />
+    <input id="folderInput" type="file" webkitdirectory directory multiple hidden />
+    <input id="contextInput" type="file" accept="application/json,.json" hidden />
+    <div class="toast" id="toast" role="status"></div><div class="scrim hidden" id="scrim"></div>
+
+    <section class="sheet hidden" id="compileSheet" aria-live="polite"><header><h2>Building PatientModel</h2><button data-close="compileSheet" aria-label="Close">×</button></header><div class="compile-heading"><div class="compile-symbol"><i></i><i></i><i></i></div><div><p id="compileMessage">Preparing study…</p></div><strong id="compileProgressText">0%</strong></div><div class="compile-track"><span id="compileProgress"></span></div><div class="compile-stages" id="compileStageList"></div></section>
+    <section class="sheet wide hidden" id="sourceSheet"><header><h2 id="sourceTitle">Evidence</h2><button data-close="sourceSheet" aria-label="Close">×</button></header><div class="source-metadata" id="sourceMeta">—</div><blockquote id="sourceExcerpt">No source selected.</blockquote><div class="binding-detail" id="sourceBinding">—</div></section>
+    <section class="sheet wide hidden" id="aiSheet"><header><h2>Query the PatientModel</h2><button data-close="aiSheet" aria-label="Close">×</button></header><p class="sheet-lede">Answers use spatial, temporal, and provenance tools.</p><div class="ai-thread" id="aiThread"><div class="ai-message system"><p>Select an object, then ask about neighbors, change, or evidence.</p></div></div><div class="suggestions"><button data-query="What is closest to this object?">Closest structure</button><button data-query="What changed since the prior study?">Calculated change</button><button data-query="Show the evidence for this object">Evidence</button></div><form class="ai-form" id="aiForm"><input id="aiInput" placeholder="Ask about the selected object" autocomplete="off" /><button class="primary-action">Run query</button></form></section>
+    <section class="sheet wide hidden" id="capabilitySheet"><header><h2>What this model can prove</h2><button data-close="capabilitySheet" aria-label="Close">×</button></header><p class="sheet-lede">Unavailable integrations remain explicit.</p><div class="capability-explain"><div><strong>Local core</strong><span>DICOM indexing, MPR, model persistence, meshes, geometry, graph traversal, context provenance, path analysis, model-lab feature extraction, and export.</span></div><div><strong>Configured services</strong><span>TotalSegmentator, SimpleITK registration, DICOMweb, Orthanc, and C-STORE activate only when their real adapters are configured.</span></div></div></section>
+    <section class="sheet object-sheet hidden" id="objectSheet"><header><h2>PatientModel objects</h2><button data-close="objectSheet" aria-label="Close">×</button></header><label class="modal-search"><span>⌕</span><input id="objectSearch" placeholder="Search anatomy, findings, or regions" autocomplete="off" /></label><div class="object-browser" id="objectBrowser"></div></section>
+    <section class="sheet wide hidden" id="gatewaySheet"><header><h2>Imaging sources</h2><button data-close="gatewaySheet" aria-label="Close">×</button></header><p class="sheet-lede">Inspect configured imaging sources, then import a study.</p><div id="gatewayCapabilities" class="gateway-capabilities"></div><div class="gateway-columns"><section><h3>DICOMweb studies</h3><div id="gatewayStudies" class="gateway-list"></div></section><section><h3>C-STORE staging</h3><div id="gatewayStaged" class="gateway-list"></div></section></div></section>
+    <section class="sheet hidden" id="exportSheet"><header><h2>Choose representation</h2><button data-close="exportSheet" aria-label="Close">×</button></header><div class="export-options"><button id="exportJson"><span>{ }</span><strong>PatientModel JSON</strong><small>Complete persisted model</small></button><button id="exportGraph"><span>⌘</span><strong>JSON-LD graph</strong><small>Objects and relationships</small></button><button id="exportContext"><span>AI</span><strong>Context bundle</strong><small>Compact downstream payload</small></button></div></section>
+    <section class="sheet wide hidden" id="modelLabSheet"><header><h2>Model lab</h2><button data-close="modelLabSheet" aria-label="Close">×</button></header><p class="sheet-lede">Build a reproducible feature table from compiled models and train an inspectable baseline.</p><div class="model-lab-grid"><div><h3>Training cohort</h3><div class="model-lab-rows" id="modelLabRows"><div class="rail-placeholder">Open a compiled study to begin.</div></div></div><div class="model-lab-side"><h3>Feature schema</h3><div class="feature-schema" id="modelLabSchema"></div><form id="modelLabForm"><label>Task<select id="modelLabTask"><option value="binary">Binary classification</option><option value="regression">Continuous outcome</option></select></label><label>Algorithm name<input id="modelLabName" value="Local clinical baseline" /></label><div class="model-lab-actions"><button class="quiet-action" id="importModelLabels" type="button">Import labels</button><input id="modelLabLabelFile" type="file" accept=".csv,.json,text/csv,application/json" hidden /><button class="primary-action" type="submit">Train and validate</button></div></form><div class="model-lab-result" id="modelLabResult"><span class="result-placeholder">No algorithm trained in this session.</span></div></div></div></section>
+  </div>
+  <script src="/assets/app.js"></script>
+</body>
+</html>

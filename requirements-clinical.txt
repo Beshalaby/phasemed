@@ -1,0 +1,5 @@
+# Optional validated clinical segmentation stack.
+# The lightweight workstation does not install these packages by default.
+TotalSegmentator==2.18.0
+highdicom>=0.28.1
+SimpleITK>=2.5.6
