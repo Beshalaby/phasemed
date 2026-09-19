@@ -97,6 +97,9 @@ def test_api_import_compile_and_query(tmp_path: Path, monkeypatch):
     assert client.get(f"/api/models/{model_id}").json()["capabilities"]["clinical_context"] == "available"
     assert client.post(f"/api/models/{model_id}/context-query", json={"query": "follow-up"}).json()["results"]
     assert client.get(f"/api/patient-models/{model_id}/history").json()["current_version"] == 3
+    audit = client.get(f"/api/models/{model_id}/audit")
+    assert audit.status_code == 200 and any(event["type"] == "context.imported" for event in audit.json()["events"])
+    assert client.get("/api/audit-events", params={"subject": model_id}).json()["events"]
 
 
 def test_cstore_staging_can_be_promoted_to_local_study(tmp_path: Path, monkeypatch):

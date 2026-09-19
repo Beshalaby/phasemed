@@ -153,6 +153,33 @@ def audit_event(event_type: str, subject: str, detail: dict | None = None) -> No
     conn = db(); conn.execute("INSERT INTO audit_events(id,payload) VALUES(?,?)", (payload["id"], json.dumps(payload))); conn.commit(); conn.close()
 
 
+def read_audit_events(subject: str | None = None, limit: int = 100) -> list[dict]:
+    conn = db()
+    rows = conn.execute("SELECT payload FROM audit_events ORDER BY rowid DESC LIMIT ?", (min(max(limit, 1), 500),)).fetchall()
+    conn.close()
+    events = []
+    for row in rows:
+        try:
+            event = json.loads(row["payload"])
+        except json.JSONDecodeError:
+            continue
+        if subject and event.get("subject") != subject and event.get("detail", {}).get("model_id") != subject:
+            continue
+        events.append(event)
+    return events
+
+
+@app.get("/api/audit-events")
+def audit_events(subject: str | None = Query(default=None), limit: int = Query(default=100, ge=1, le=500)) -> dict:
+    return {"events": read_audit_events(subject, limit), "provenance": {"source": "local-audit-store", "ordered": "newest-first"}}
+
+
+@app.get("/api/models/{model_id}/audit")
+def model_audit(model_id: str, limit: int = Query(default=100, ge=1, le=500)) -> dict:
+    load_model(model_id)
+    return {"model_id": model_id, "events": read_audit_events(model_id, limit), "provenance": {"source": "local-audit-store", "ordered": "newest-first"}}
+
+
 def matching_models(patient_id: str) -> list[PatientModel]:
     models: list[PatientModel] = []
     for path in MODEL_ROOT.glob("*.json"):

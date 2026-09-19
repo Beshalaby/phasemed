@@ -49,6 +49,7 @@ The same optional stack includes a SimpleITK registration runner. It writes a me
 ## API surface
 
 - `GET /api/health`
+- `GET /api/audit-events?subject=...` and `/api/models/{model_id}/audit` — bounded, newest-first local audit trail
 - `GET /api/studies`
 - `POST /api/studies/import` — multipart DICOM files or ZIP
 - `GET /api/studies/{study_id}`
