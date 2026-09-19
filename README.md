@@ -99,12 +99,13 @@ The same optional stack includes a SimpleITK registration runner. It writes a me
 The model lab is deliberately downstream of the clinical object compiler. It
 extracts a stable numeric feature vector from PatientObjects, geometry,
 relationships, context bindings, meshes, temporal changes, and compiled
-source-image statistics. Labels are
-caller-supplied and retained in dataset provenance; the local workbench never
-turns an imaging heuristic into a clinical label automatically. It currently
-supports transparent NumPy logistic classification and linear regression with
-persisted normalization, coefficients, training rows, deterministic validation
-metrics for larger cohorts, and per-feature prediction contributions.
+source-image statistics. Labels are caller-supplied and retained in dataset
+provenance; the local workbench never turns an imaging heuristic into a
+clinical label automatically. It supports transparent NumPy logistic
+classification, linear regression, and deterministic bootstrap random forests
+for classification or regression. Every run persists its algorithm
+configuration, training rows, deterministic validation metrics, feature
+importance, tree structure where applicable, and per-prediction explanations.
 
 ## Honest capability boundary
 

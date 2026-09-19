@@ -264,6 +264,13 @@ async function openGateway() {
   } catch (error) { $("gatewayCapabilities").innerHTML = `<span>Gateway unavailable · ${escapeHtml(error.message)}</span>`; }
 }
 
+function renderModelAlgorithmOptions(task) {
+  const options = task === "regression"
+    ? `<option value="auto">Auto-select validated algorithm</option><option value="linear-regression">Linear regression</option><option value="random-forest">Random forest</option>`
+    : `<option value="auto">Auto-select validated algorithm</option><option value="binary-logistic-regression">Logistic regression</option><option value="random-forest">Random forest</option>`;
+  $("modelLabAlgorithm").innerHTML = options;
+}
+
 async function openModelLab() {
   state.modelLabDataset = null;
   showSheet("modelLabSheet");
@@ -272,10 +279,11 @@ async function openModelLab() {
   try {
     const [schema, algorithms] = await Promise.all([api("/api/model-lab/schema"), api("/api/model-lab/algorithms")]);
     $("modelLabSchema").innerHTML = schema.feature_schema.map((feature) => `<div><span>${escapeHtml(feature.label)}</span><small>${escapeHtml(feature.unit)}</small></div>`).join("");
+    renderModelAlgorithmOptions($("modelLabTask").value);
     const studies = state.studies.filter((study) => study.model_id);
     $("modelLabRows").innerHTML = studies.length ? studies.map((study) => `<div class="model-lab-row"><div><strong>${escapeHtml(study.patient_name || study.patient_id || "Patient")}</strong><span>${escapeHtml(study.description || study.modality || "Compiled study")}</span><small>${escapeHtml(study.id)}</small></div><input class="model-lab-label" data-lab-label="${escapeHtml(study.model_id)}" aria-label="Outcome label for ${escapeHtml(study.id)}" type="number" step="any" placeholder="Exclude" /></div>`).join("") : `<div class="rail-placeholder">Compile at least one study before assembling a cohort.</div>`;
     document.querySelectorAll("[data-lab-label]").forEach((input) => input.addEventListener("input", () => { state.modelLabDataset = null; }));
-    $("modelLabTask").onchange = () => { state.modelLabDataset = null; };
+    $("modelLabTask").onchange = () => { state.modelLabDataset = null; renderModelAlgorithmOptions($("modelLabTask").value); };
     const latest = algorithms[0];
     if (latest) $("modelLabResult").innerHTML = `<div><span>Latest algorithm</span><strong>${escapeHtml(latest.name)}</strong><small>${latest.training?.row_count || 0} labeled models · accuracy ${Math.round((latest.training?.metrics?.accuracy || 0) * 100)}%</small></div>`;
   } catch (error) {
@@ -316,7 +324,14 @@ async function trainModelLab(event) {
   try {
     let dataset = importedDataset;
     if (!dataset) dataset = await api("/api/model-lab/datasets", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ task, name: $("modelLabName").value || "Local clinical baseline", model_ids: modelIds, labels }) });
-    const algorithm = await api("/api/model-lab/search", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ dataset_id: dataset.id, name: $("modelLabName").value || "Local clinical baseline" }) });
+    const selectedAlgorithm = $("modelLabAlgorithm").value;
+    const searchPayload = { dataset_id: dataset.id, name: $("modelLabName").value || "Local clinical baseline" };
+    if (selectedAlgorithm !== "auto") {
+      searchPayload.candidates = selectedAlgorithm === "random-forest"
+        ? [{ algorithm: "random-forest", n_estimators: 32, max_depth: 6, min_samples_leaf: 1, seed: 17 }]
+        : [{ algorithm: selectedAlgorithm, iterations: 600, learning_rate: task === "regression" ? 0.03 : 0.08, l2: 0.001 }];
+    }
+    const algorithm = await api("/api/model-lab/search", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(searchPayload) });
     const metrics = algorithm.training?.metrics || {};
     const validation = algorithm.training?.validation;
     const evaluated = validation?.metrics || metrics;
@@ -329,7 +344,7 @@ async function trainModelLab(event) {
     }
     toast("Algorithm trained with persisted provenance");
   } catch (error) { toast(`Model lab failed · ${error.message}`); }
-  button.disabled = false; button.textContent = "Build and train";
+  button.disabled = false; button.textContent = "Train and validate";
 }
 
 async function exportRepresentation(kind) {

@@ -169,6 +169,10 @@ def test_model_lab_assembles_trains_and_predicts_from_persisted_models(tmp_path:
     assert algorithm.status_code == 200 and algorithm.json()["type"] == "binary-logistic-regression"
     searched = client.post("/api/model-lab/search", json={"dataset_id": dataset.json()["id"], "name": "Searched change screen", "candidates": [{"iterations": 40, "learning_rate": 0.04, "l2": 0.001}, {"iterations": 50, "learning_rate": 0.08, "l2": 0.01}]})
     assert searched.status_code == 200 and searched.json()["search"]["candidate_count"] == 2
+    forest = client.post("/api/model-lab/train", json={"dataset_id": dataset.json()["id"], "algorithm": "random-forest", "name": "Finding forest", "n_estimators": 8, "max_depth": 4, "seed": 17})
+    assert forest.status_code == 200 and forest.json()["type"] == "random-forest-classifier"
+    forest_prediction = client.post(f"/api/model-lab/algorithms/{forest.json()['id']}/predict", json={"model_id": model_ids[1]})
+    assert forest_prediction.status_code == 200 and len(forest_prediction.json()["tree_predictions"]) == 8
     prediction = client.post(f"/api/model-lab/algorithms/{algorithm.json()['id']}/predict", json={"model_id": model_ids[1]})
     assert prediction.status_code == 200 and "contributions" in prediction.json()
     features = client.get("/api/model-lab/features", params={"model_ids": ",".join(model_ids)})

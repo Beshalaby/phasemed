@@ -40,7 +40,7 @@ from .geometry import (
     within_radius,
 )
 from .models import JobState, PatientModel, SpatialQuery, StudySummary, TimelineEntry, now_iso
-from .model_lab import FEATURE_NAMES, FEATURE_SCHEMA, dataset_rows, extract_features, predict as predict_algorithm, train_binary, train_regression
+from .model_lab import FEATURE_NAMES, FEATURE_SCHEMA, dataset_rows, extract_features, predict as predict_algorithm, train_algorithm
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -402,7 +402,18 @@ def load_lab_artifact(kind: str, identifier: str) -> dict:
 
 @app.get("/api/model-lab/schema")
 def model_lab_schema() -> dict:
-    return {"feature_schema": FEATURE_SCHEMA, "label_formats": {"binary": {"values": [0, 1]}, "regression": {"values": "finite numeric outcomes"}}, "source": "caller-supplied", "capabilities": ["feature-extraction", "dataset-assembly", "cohort-label-import", "binary-logistic-regression", "linear-regression", "deterministic-validation", "configuration-search", "batch-inference", "evaluation"]}
+    return {
+        "feature_schema": FEATURE_SCHEMA,
+        "label_formats": {"binary": {"values": [0, 1]}, "regression": {"values": "finite numeric outcomes"}},
+        "source": "caller-supplied",
+        "algorithms": [
+            {"id": "binary-logistic-regression", "task": "binary", "family": "linear", "explainability": "coefficient-contributions"},
+            {"id": "linear-regression", "task": "regression", "family": "linear", "explainability": "coefficient-contributions"},
+            {"id": "random-forest", "task": "binary", "family": "ensemble", "explainability": "feature-importance-and-tree-votes"},
+            {"id": "random-forest", "task": "regression", "family": "ensemble", "explainability": "feature-importance-and-tree-votes"},
+        ],
+        "capabilities": ["feature-extraction", "dataset-assembly", "cohort-label-import", "binary-logistic-regression", "linear-regression", "random-forest-classification", "random-forest-regression", "deterministic-validation", "configuration-search", "batch-inference", "evaluation"],
+    }
 
 
 @app.post("/api/model-lab/datasets")
@@ -547,9 +558,12 @@ def train_model_lab(payload: dict) -> dict:
     if not dataset_id:
         raise HTTPException(400, "dataset_id is required")
     dataset = load_lab_artifact("dataset", dataset_id)
+    task = dataset.get("task") or "binary"
+    default_algorithm = "linear-regression" if task == "regression" else "binary-logistic-regression"
+    algorithm = str(payload.get("algorithm") or default_algorithm)
     try:
-        train_kwargs = {"rows": dataset.get("rows", []), "name": str(payload.get("name") or ("Phasemed linear model" if dataset.get("task") == "regression" else "Phasemed binary model")), "iterations": int(payload.get("iterations", 600)), "learning_rate": float(payload.get("learning_rate", 0.03 if dataset.get("task") == "regression" else 0.08)), "l2": float(payload.get("l2", 0.001))}
-        artifact = train_regression(**train_kwargs) if dataset.get("task") == "regression" else train_binary(**train_kwargs)
+        parameters = {key: payload[key] for key in ("iterations", "learning_rate", "l2", "n_estimators", "max_depth", "min_samples_leaf", "max_features", "seed") if key in payload}
+        artifact = train_algorithm(rows=dataset.get("rows", []), task=task, algorithm=algorithm, name=str(payload.get("name") or ""), **parameters)
     except (TypeError, ValueError) as exc:
         raise HTTPException(400, str(exc)) from exc
     artifact["training"]["dataset_id"] = dataset_id
@@ -569,17 +583,18 @@ def search_model_lab(payload: dict) -> dict:
     if task not in {"binary", "regression"}:
         raise HTTPException(400, "dataset task must be binary or regression")
     requested = payload.get("candidates")
+    default_algorithm = "linear-regression" if task == "regression" else "binary-logistic-regression"
     candidates = requested if isinstance(requested, list) and requested else (
         [
-            {"iterations": 400, "learning_rate": 0.04, "l2": 0.001},
-            {"iterations": 600, "learning_rate": 0.08, "l2": 0.001},
-            {"iterations": 900, "learning_rate": 0.04, "l2": 0.01},
+            {"algorithm": default_algorithm, "iterations": 400, "learning_rate": 0.04, "l2": 0.001},
+            {"algorithm": default_algorithm, "iterations": 600, "learning_rate": 0.08, "l2": 0.001},
+            {"algorithm": "random-forest", "n_estimators": 24, "max_depth": 5, "min_samples_leaf": 1, "seed": 17},
         ]
         if task == "binary"
         else [
-            {"iterations": 400, "learning_rate": 0.02, "l2": 0.001},
-            {"iterations": 600, "learning_rate": 0.03, "l2": 0.001},
-            {"iterations": 900, "learning_rate": 0.02, "l2": 0.01},
+            {"algorithm": default_algorithm, "iterations": 400, "learning_rate": 0.02, "l2": 0.001},
+            {"algorithm": default_algorithm, "iterations": 600, "learning_rate": 0.03, "l2": 0.001},
+            {"algorithm": "random-forest", "n_estimators": 24, "max_depth": 5, "min_samples_leaf": 1, "seed": 17},
         ]
     )
     if len(candidates) > 12:
@@ -591,15 +606,16 @@ def search_model_lab(payload: dict) -> dict:
         if not isinstance(candidate, dict):
             raise HTTPException(400, f"candidate {index + 1} must be an object")
         try:
-            kwargs = {"rows": dataset.get("rows", []), "name": str(payload.get("name") or ("Phasemed linear model" if task == "regression" else "Phasemed binary model")), "iterations": int(candidate.get("iterations", 600)), "learning_rate": float(candidate.get("learning_rate", 0.03 if task == "regression" else 0.08)), "l2": float(candidate.get("l2", 0.001))}
-            artifact = train_regression(**kwargs) if task == "regression" else train_binary(**kwargs)
+            algorithm = str(candidate.get("algorithm") or default_algorithm)
+            parameters = {key: candidate[key] for key in ("iterations", "learning_rate", "l2", "n_estimators", "max_depth", "min_samples_leaf", "max_features", "seed") if key in candidate}
+            artifact = train_algorithm(rows=dataset.get("rows", []), task=task, algorithm=algorithm, name=str(payload.get("name") or ""), **parameters)
         except (TypeError, ValueError) as exc:
             raise HTTPException(400, f"candidate {index + 1}: {exc}") from exc
         split = artifact.get("training", {}).get("validation")
         metrics = (split or artifact.get("training", {})).get("metrics", {})
         score = float(metrics.get("rmse", 0.0)) if task == "regression" else float(metrics.get("accuracy", 0.0))
         comparable = -score if task == "regression" else score
-        results.append({"candidate": kwargs | {"index": index}, "metrics": metrics, "validation": bool(split), "score": round(score, 6)})
+        results.append({"candidate": {"algorithm": algorithm, **parameters, "index": index}, "metrics": metrics, "validation": bool(split), "score": round(score, 6), "type": artifact.get("type")})
         if winner is None or comparable > winner_score:
             winner = artifact
             winner_score = comparable
@@ -659,7 +675,7 @@ def model_lab_evaluate(algorithm_id: str, payload: dict) -> dict:
     if not isinstance(labels, dict) or not isinstance(model_ids, list) or not model_ids:
         raise HTTPException(400, "model_ids and binary labels are required")
     rows = []
-    regression = artifact.get("type") == "linear-regression"
+    regression = artifact.get("type") in {"linear-regression", "random-forest-regressor"}
     for model_id in model_ids:
         key = str(model_id)
         if key not in labels:

@@ -1,11 +1,11 @@
 """Deterministic feature and model workflows built on top of PatientModel.
 
-This module intentionally keeps the first model workbench dependency-light. It
-turns persisted PatientModels into a stable feature table, trains auditable
-classification and regression baselines with NumPy, and stores the feature
-schema, validation metrics, and provenance alongside every run. Clinical
-labels are always supplied by the caller; the workbench never invents them
-from imaging.
+This module intentionally keeps the model workbench dependency-light. It turns
+persisted PatientModels into a stable feature table, trains auditable linear
+baselines or deterministic bootstrap forests with NumPy, and stores the
+feature schema, validation metrics, feature importance, and provenance
+alongside every run. Clinical labels are always supplied by the caller; the
+workbench never invents them from imaging.
 """
 
 from __future__ import annotations
@@ -150,6 +150,211 @@ def _classification_metrics(truth: np.ndarray, predictions: np.ndarray) -> dict[
     }
 
 
+def _tree_impurity(values: np.ndarray, task: str) -> float:
+    if not len(values):
+        return 0.0
+    if task == "binary":
+        positive = float(np.mean(values))
+        return 2.0 * positive * (1.0 - positive)
+    mean = float(np.mean(values))
+    return float(np.mean((values - mean) ** 2))
+
+
+def _leaf_node(values: np.ndarray, task: str) -> dict[str, Any]:
+    if task == "binary":
+        positive = int(np.sum(values >= 0.5))
+        negative = int(len(values) - positive)
+        return {
+            "kind": "leaf",
+            "probability": round(positive / max(1, len(values)), 8),
+            "class_counts": [negative, positive],
+            "samples": int(len(values)),
+        }
+    return {"kind": "leaf", "value": round(float(np.mean(values)), 8), "samples": int(len(values))}
+
+
+def _best_tree_split(
+    matrix: np.ndarray,
+    values: np.ndarray,
+    feature_indices: np.ndarray,
+    task: str,
+    min_samples_leaf: int,
+) -> dict[str, Any] | None:
+    parent_impurity = _tree_impurity(values, task)
+    if parent_impurity <= 1e-12:
+        return None
+    best: dict[str, Any] | None = None
+    for feature_index in feature_indices:
+        column = matrix[:, int(feature_index)]
+        unique = np.unique(column)
+        if len(unique) < 2:
+            continue
+        if len(unique) > 65:
+            positions = np.unique(np.linspace(1, len(unique) - 1, 64, dtype=int))
+            thresholds = (unique[positions - 1] + unique[positions]) / 2.0
+        else:
+            thresholds = (unique[:-1] + unique[1:]) / 2.0
+        for threshold in thresholds:
+            left_mask = column <= threshold
+            left_count = int(np.sum(left_mask))
+            right_count = len(values) - left_count
+            if left_count < min_samples_leaf or right_count < min_samples_leaf:
+                continue
+            left_values = values[left_mask]
+            right_values = values[~left_mask]
+            weighted_impurity = (
+                left_count * _tree_impurity(left_values, task)
+                + right_count * _tree_impurity(right_values, task)
+            ) / len(values)
+            gain = parent_impurity - weighted_impurity
+            if best is None or gain > float(best["gain"]) + 1e-12:
+                best = {
+                    "feature": int(feature_index),
+                    "threshold": float(threshold),
+                    "gain": float(gain),
+                    "left_mask": left_mask,
+                }
+    return best
+
+
+def _build_tree(
+    matrix: np.ndarray,
+    values: np.ndarray,
+    *,
+    task: str,
+    depth: int,
+    max_depth: int,
+    min_samples_leaf: int,
+    max_features: int,
+    rng: np.random.Generator,
+) -> dict[str, Any]:
+    if (
+        depth >= max_depth
+        or len(values) < 2 * min_samples_leaf
+        or (task == "binary" and len(np.unique(values)) < 2)
+        or (task == "regression" and float(np.ptp(values)) <= 1e-12)
+    ):
+        return _leaf_node(values, task)
+    feature_indices = np.sort(rng.choice(matrix.shape[1], size=min(max_features, matrix.shape[1]), replace=False))
+    split = _best_tree_split(matrix, values, feature_indices, task, min_samples_leaf)
+    if split is None or float(split["gain"]) <= 1e-12:
+        return _leaf_node(values, task)
+    left_mask = split.pop("left_mask")
+    return {
+        "kind": "split",
+        "feature": int(split["feature"]),
+        "threshold": round(float(split["threshold"]), 8),
+        "gain": round(float(split["gain"]), 8),
+        "samples": int(len(values)),
+        "left": _build_tree(
+            matrix[left_mask], values[left_mask], task=task, depth=depth + 1,
+            max_depth=max_depth, min_samples_leaf=min_samples_leaf,
+            max_features=max_features, rng=rng,
+        ),
+        "right": _build_tree(
+            matrix[~left_mask], values[~left_mask], task=task, depth=depth + 1,
+            max_depth=max_depth, min_samples_leaf=min_samples_leaf,
+            max_features=max_features, rng=rng,
+        ),
+    }
+
+
+def _predict_tree(node: dict[str, Any], vector: np.ndarray) -> float:
+    current = node
+    while current.get("kind") == "split":
+        current = current["left"] if vector[int(current["feature"])] <= float(current["threshold"]) else current["right"]
+    return float(current.get("probability", current.get("value", 0.0)))
+
+
+def _tree_importance(node: dict[str, Any], importance: np.ndarray) -> None:
+    if node.get("kind") != "split":
+        return
+    feature = int(node["feature"])
+    importance[feature] += float(node.get("gain", 0.0)) * float(node.get("samples", 1))
+    _tree_importance(node["left"], importance)
+    _tree_importance(node["right"], importance)
+
+
+def _forest_predictions(trees: list[dict[str, Any]], matrix: np.ndarray) -> np.ndarray:
+    return np.asarray([[_predict_tree(tree, vector) for tree in trees] for vector in matrix], dtype=np.float64).mean(axis=1)
+
+
+def train_forest(
+    rows: list[dict[str, Any]],
+    *,
+    name: str,
+    task: str = "binary",
+    n_estimators: int = 32,
+    max_depth: int = 6,
+    min_samples_leaf: int = 1,
+    max_features: str | int = "sqrt",
+    seed: int = 17,
+) -> dict[str, Any]:
+    """Fit a deterministic bootstrap forest with serializable, inspectable trees."""
+    if task not in {"binary", "regression"}:
+        raise ValueError("task must be binary or regression")
+    if len(rows) < 2:
+        raise ValueError("At least two labeled PatientModels are required for training")
+    if n_estimators < 1 or n_estimators > 200:
+        raise ValueError("n_estimators must be between 1 and 200")
+    if max_depth < 1 or max_depth > 20:
+        raise ValueError("max_depth must be between 1 and 20")
+    if min_samples_leaf < 1 or min_samples_leaf > 1000:
+        raise ValueError("min_samples_leaf must be between 1 and 1000")
+    if isinstance(max_features, str):
+        if max_features == "sqrt":
+            feature_count = max(1, int(math.sqrt(len(FEATURE_NAMES))))
+        elif max_features == "all":
+            feature_count = len(FEATURE_NAMES)
+        else:
+            raise ValueError("max_features must be sqrt, all, or an integer")
+    else:
+        feature_count = int(max_features)
+        if feature_count < 1:
+            raise ValueError("max_features must be at least 1")
+    fit_rows, validation_rows = _split_rows(rows, task=task)
+    matrix = _matrix(fit_rows)
+    values = np.asarray([float(row["label"]) for row in fit_rows], dtype=np.float64)
+    rng = np.random.default_rng(int(seed))
+    trees = []
+    for _ in range(int(n_estimators)):
+        bootstrap = rng.integers(0, len(fit_rows), size=len(fit_rows))
+        tree_rng = np.random.default_rng(int(rng.integers(0, 2**32 - 1)))
+        trees.append(_build_tree(matrix[bootstrap], values[bootstrap], task=task, depth=0, max_depth=int(max_depth), min_samples_leaf=int(min_samples_leaf), max_features=feature_count, rng=tree_rng))
+    fit_predictions = _forest_predictions(trees, matrix)
+    if task == "binary":
+        fit_metrics = _classification_metrics(values, (fit_predictions >= 0.5).astype(int))
+    else:
+        fit_metrics = _regression_metrics(values, fit_predictions)
+    validation_metrics = None
+    if validation_rows:
+        validation_matrix = _matrix(validation_rows)
+        validation_values = np.asarray([float(row["label"]) for row in validation_rows], dtype=np.float64)
+        validation_predictions = _forest_predictions(trees, validation_matrix)
+        validation_metrics = (_classification_metrics(validation_values, (validation_predictions >= 0.5).astype(int)) if task == "binary" else _regression_metrics(validation_values, validation_predictions))
+    importances = np.zeros(len(FEATURE_NAMES), dtype=np.float64)
+    for tree in trees:
+        _tree_importance(tree, importances)
+    if float(importances.sum()) > 0:
+        importances /= float(importances.sum())
+    algorithm_type = "random-forest-classifier" if task == "binary" else "random-forest-regressor"
+    return {
+        "id": f"algorithm-{uuid.uuid4().hex[:12]}",
+        "name": name.strip() or ("Phasemed random forest classifier" if task == "binary" else "Phasemed random forest regressor"),
+        "type": algorithm_type,
+        "status": "ready",
+        "created_at": _now(),
+        "feature_schema": FEATURE_SCHEMA,
+        "parameters": {"n_estimators": int(n_estimators), "max_depth": int(max_depth), "min_samples_leaf": int(min_samples_leaf), "max_features": max_features, "seed": int(seed)},
+        "trees": trees,
+        "feature_importance": {name: round(float(importances[index]), 8) for index, name in enumerate(FEATURE_NAMES)},
+        "feature_baseline": {"means": matrix.mean(axis=0).round(8).tolist(), "scales": np.where(matrix.std(axis=0) < 1e-9, 1.0, matrix.std(axis=0)).round(8).tolist()},
+        "labels": {"negative": 0, "positive": 1} if task == "binary" else None,
+        "training": {"row_count": len(fit_rows), "model_ids": [row["model_id"] for row in fit_rows], "metrics": fit_metrics, "baseline": round(float(np.mean(values)), 8), **({"validation": {"row_count": len(validation_rows), "model_ids": [row["model_id"] for row in validation_rows], "metrics": validation_metrics}} if validation_metrics else {})},
+        "provenance": {"method": "patient-model-feature-vector", "feature_engine": "phasemed-model-lab-forest-0.1", "clinical_label_source": "caller-supplied", "deterministic_seed": int(seed)},
+    }
+
+
 def train_binary(rows: list[dict[str, Any]], *, name: str, iterations: int = 600, learning_rate: float = 0.08, l2: float = 0.001) -> dict[str, Any]:
     """Fit a small, transparent logistic model and return its complete artifact."""
     if len(rows) < 2:
@@ -255,9 +460,56 @@ def train_regression(rows: list[dict[str, Any]], *, name: str, iterations: int =
     }
 
 
+def train_algorithm(rows: list[dict[str, Any]], *, task: str, algorithm: str, name: str, **parameters: Any) -> dict[str, Any]:
+    """Dispatch a validated task/algorithm pair for API and search callers."""
+    if task == "binary" and algorithm == "binary-logistic-regression":
+        return train_binary(
+            rows,
+            name=name,
+            iterations=int(parameters.get("iterations", 600)),
+            learning_rate=float(parameters.get("learning_rate", 0.08)),
+            l2=float(parameters.get("l2", 0.001)),
+        )
+    if task == "regression" and algorithm == "linear-regression":
+        return train_regression(
+            rows,
+            name=name,
+            iterations=int(parameters.get("iterations", 600)),
+            learning_rate=float(parameters.get("learning_rate", 0.03)),
+            l2=float(parameters.get("l2", 0.001)),
+        )
+    if task in {"binary", "regression"} and algorithm == "random-forest":
+        return train_forest(
+            rows,
+            name=name,
+            task=task,
+            n_estimators=int(parameters.get("n_estimators", 32)),
+            max_depth=int(parameters.get("max_depth", 6)),
+            min_samples_leaf=int(parameters.get("min_samples_leaf", 1)),
+            max_features=parameters.get("max_features", "sqrt"),
+            seed=int(parameters.get("seed", 17)),
+        )
+    raise ValueError(f"Unsupported {task} algorithm: {algorithm}")
+
+
 def predict(artifact: dict[str, Any], model: PatientModel) -> dict[str, Any]:
     features = extract_features(model)
     vector = np.asarray([features[name] for name in FEATURE_NAMES], dtype=np.float64)
+    if artifact.get("type") in {"random-forest-classifier", "random-forest-regressor"}:
+        trees = artifact.get("trees") or []
+        if not trees:
+            raise ValueError("Forest artifact contains no trees")
+        tree_predictions = np.asarray([_predict_tree(tree, vector) for tree in trees], dtype=np.float64)
+        raw = float(tree_predictions.mean())
+        importance = artifact.get("feature_importance") or {}
+        means = np.asarray((artifact.get("feature_baseline") or {}).get("means", [0.0] * len(FEATURE_NAMES)), dtype=np.float64)
+        scales = np.asarray((artifact.get("feature_baseline") or {}).get("scales", [1.0] * len(FEATURE_NAMES)), dtype=np.float64)
+        baseline = float((artifact.get("training") or {}).get("baseline", raw))
+        normalized = (vector - means) / np.where(scales < 1e-9, 1.0, scales)
+        contributions = {name: round(float(float(importance.get(name, 0.0)) * np.tanh(normalized[index]) * (raw - baseline)), 6) for index, name in enumerate(FEATURE_NAMES)}
+        if artifact.get("type") == "random-forest-regressor":
+            return {"model_id": model.id, "prediction": round(raw, 6), "features": features, "contributions": contributions, "tree_predictions": [round(float(value), 6) for value in tree_predictions], "provenance": {"algorithm_id": artifact["id"], "algorithm_type": artifact["type"], "feature_engine": "phasemed-model-lab-forest-0.1"}}
+        return {"model_id": model.id, "prediction": 1 if raw >= 0.5 else 0, "probability_positive": round(raw, 6), "features": features, "contributions": contributions, "tree_predictions": [round(float(value), 6) for value in tree_predictions], "provenance": {"algorithm_id": artifact["id"], "algorithm_type": artifact["type"], "feature_engine": "phasemed-model-lab-forest-0.1"}}
     means = np.asarray(artifact["normalization"]["means"], dtype=np.float64)
     scales = np.asarray(artifact["normalization"]["scales"], dtype=np.float64)
     weights = np.asarray(artifact["weights"], dtype=np.float64)

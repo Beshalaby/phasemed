@@ -1,4 +1,4 @@
-from backend.model_lab import dataset_rows, extract_features, predict, train_binary, train_regression
+from backend.model_lab import dataset_rows, extract_features, predict, train_binary, train_forest, train_regression
 from backend.models import BoundingBox, Geometry, PatientModel, PatientObject, Relationship, TemporalLink
 
 
@@ -60,6 +60,28 @@ def test_regression_model_supports_continuous_outcomes():
     result = predict(artifact, models[-1])
     assert artifact["type"] == "linear-regression"
     assert set(("mse", "rmse", "mae", "r2")) <= set(artifact["training"]["metrics"])
+    assert isinstance(result["prediction"], float)
+
+
+def test_random_forest_classifier_is_deterministic_and_explainable():
+    models = [model("m1", False, 10), model("m2", False, 12), model("m3", True, 100), model("m4", True, 120)]
+    rows = dataset_rows(models, {item.id: int(item.objects[-1].type == "finding") for item in models})
+    artifact = train_forest(rows, name="Finding forest", task="binary", n_estimators=12, max_depth=4, seed=17)
+    result = predict(artifact, models[-1])
+    assert artifact["type"] == "random-forest-classifier"
+    assert len(artifact["trees"]) == 12
+    assert set(artifact["feature_importance"]) == set(FEATURE["name"] for FEATURE in artifact["feature_schema"])
+    assert 0.0 <= result["probability_positive"] <= 1.0
+    assert len(result["tree_predictions"]) == 12
+
+
+def test_random_forest_regressor_supports_continuous_outcomes():
+    models = [model(f"m{i}", False, volume) for i, volume in enumerate((10, 20, 30, 40, 50), start=1)]
+    rows = dataset_rows(models, {item.id: float(index) * 2.5 for index, item in enumerate(models, start=1)}, task="regression")
+    artifact = train_forest(rows, name="Volume forest", task="regression", n_estimators=10, max_depth=4, seed=17)
+    result = predict(artifact, models[-1])
+    assert artifact["type"] == "random-forest-regressor"
+    assert artifact["training"]["validation"]["row_count"] == 1
     assert isinstance(result["prediction"], float)
 
 
