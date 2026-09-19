@@ -17,6 +17,9 @@ def test_landing_page_and_workstation_routes():
     workspace = client.get("/workspace")
     assert workspace.status_code == 200
     assert "Open a study" in workspace.text
+    assert 'data-temporal-mode="overlay"' in workspace.text
+    assert 'data-temporal-mode="difference"' in workspace.text
+    assert 'data-temporal-mode="morph"' in workspace.text
 
 
 def dicom_bytes(tmp_path: Path) -> bytes:
