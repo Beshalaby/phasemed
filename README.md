@@ -81,6 +81,7 @@ The same optional stack includes a SimpleITK registration runner. It writes a me
 - `POST /api/model-lab/cohort-analysis` — project, cluster, and rank anomalies across unlabeled PatientModels
 - `GET /api/model-lab/cohort-analysis` and `GET /api/model-lab/cohort-analysis/{analysis_id}` — inspect persisted cohort analyses
 - `GET /api/model-lab/datasets/{dataset_id}/csv` — export a feature dataset for external analysis
+- `GET /api/model-lab/datasets/{dataset_id}/quality` — summarize cohort distributions and optional baseline drift
 - `POST /api/model-lab/train` — train an auditable local classification or regression algorithm from a dataset
 - `POST /api/model-lab/search` — compare a bounded, reproducible configuration sweep and persist the selected algorithm
 - `POST /api/model-lab/algorithms/{algorithm_id}/predict` — explain one prediction with feature contributions

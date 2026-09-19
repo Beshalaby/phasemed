@@ -476,7 +476,7 @@ def model_lab_schema() -> dict:
             {"id": "random-forest", "task": "binary", "family": "ensemble", "explainability": "feature-importance-and-tree-votes"},
             {"id": "random-forest", "task": "regression", "family": "ensemble", "explainability": "feature-importance-and-tree-votes"},
         ],
-        "capabilities": ["feature-extraction", "dataset-assembly", "cohort-label-import", "cohort-clustering", "pca-cohort-projection", "anomaly-ranking", "binary-logistic-regression", "linear-regression", "random-forest-classification", "random-forest-regression", "deterministic-validation", "k-fold-cross-validation", "configuration-search", "batch-inference", "evaluation"],
+        "capabilities": ["feature-extraction", "dataset-assembly", "cohort-label-import", "cohort-quality-summary", "cohort-drift-analysis", "cohort-clustering", "pca-cohort-projection", "anomaly-ranking", "binary-logistic-regression", "linear-regression", "random-forest-classification", "random-forest-regression", "deterministic-validation", "k-fold-cross-validation", "configuration-search", "batch-inference", "evaluation"],
     }
 
 
