@@ -571,7 +571,7 @@ def list_model_lab_datasets() -> list[dict]:
             payload = json.loads(path.read_text(encoding="utf-8"))
         except json.JSONDecodeError:
             continue
-        results.append({key: payload[key] for key in ("id", "name", "created_at", "feature_schema", "provenance") if key in payload} | {"row_count": len(payload.get("rows", []))})
+        results.append({key: payload[key] for key in ("id", "name", "task", "created_at", "feature_schema", "provenance") if key in payload} | {"row_count": len(payload.get("rows", []))})
     return results
 
 

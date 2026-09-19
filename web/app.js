@@ -441,10 +441,14 @@ async function inspectModelLabQuality() {
       state.modelLabDataset = dataset;
     }
     button.disabled = true; button.textContent = "Checking…";
-    const quality = await api(`/api/model-lab/datasets/${encodeURIComponent(dataset.id)}/quality`);
+    const datasets = await api("/api/model-lab/datasets");
+    const baseline = datasets.find((candidate) => candidate.id !== dataset.id && candidate.task === task);
+    const qualityPath = baseline ? `/api/model-lab/datasets/${encodeURIComponent(dataset.id)}/quality?baseline_dataset_id=${encodeURIComponent(baseline.id)}` : `/api/model-lab/datasets/${encodeURIComponent(dataset.id)}/quality`;
+    const quality = await api(qualityPath);
     const flagged = Object.entries(quality.features || {}).filter(([, stats]) => stats.zero_count === quality.row_count).length;
+    const drifted = Object.values(quality.drift || {}).filter((stats) => stats.flagged).length;
     const labelSummary = quality.label_summary?.task === "binary" ? `${quality.label_summary.counts["0"] || 0} negative · ${quality.label_summary.counts["1"] || 0} positive` : `Outcome mean ${number(quality.label_summary?.mean, 2)} · range ${number(quality.label_summary?.min, 2)}–${number(quality.label_summary?.max, 2)}`;
-    $("modelLabResult").innerHTML = `<div><span>Cohort quality</span><strong>${quality.row_count} rows · ${quality.feature_count} features</strong><small>${labelSummary} · ${flagged} all-zero feature${flagged === 1 ? "" : "s"}</small><code>${escapeHtml(quality.dataset_id)}</code></div>`;
+    $("modelLabResult").innerHTML = `<div><span>Cohort quality</span><strong>${quality.row_count} rows · ${quality.feature_count} features</strong><small>${labelSummary} · ${flagged} all-zero feature${flagged === 1 ? "" : "s"}${baseline ? ` · ${drifted} drift flag${drifted === 1 ? "" : "s"} vs ${escapeHtml(baseline.name)}` : ""}</small><code>${escapeHtml(quality.dataset_id)}</code></div>`;
     toast("Cohort quality checked");
   } catch (error) { toast(`Quality check failed · ${error.message}`); }
   button.disabled = false; button.textContent = "Check quality";

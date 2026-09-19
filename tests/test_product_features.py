@@ -165,6 +165,7 @@ def test_model_lab_assembles_trains_and_predicts_from_persisted_models(tmp_path:
     assert dataset.status_code == 200 and dataset.json()["provenance"]["label_source"] == "caller-supplied"
     quality = client.get(f"/api/model-lab/datasets/{dataset.json()['id']}/quality")
     assert quality.status_code == 200 and quality.json()["row_count"] == 2
+    assert any(item["id"] == dataset.json()["id"] and item["task"] == "binary" for item in client.get("/api/model-lab/datasets").json())
     uploaded = client.post("/api/model-lab/datasets/import", data={"task": "binary", "name": "Uploaded labels"}, files={"file": ("labels.csv", f"model_id,label\n{model_ids[0]},0\n{model_ids[1]},1\n".encode(), "text/csv")})
     assert uploaded.status_code == 200 and uploaded.json()["provenance"]["label_source"] == "caller-supplied-upload"
     algorithm = client.post("/api/model-lab/train", json={"dataset_id": dataset.json()["id"], "name": "Change screen", "iterations": 40})
