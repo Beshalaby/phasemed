@@ -53,7 +53,7 @@ The same optional stack includes a SimpleITK registration runner. It writes a me
 - `GET /api/studies`
 - `POST /api/studies/import` — multipart DICOM files or ZIP
 - `GET /api/studies/{study_id}`
-- `GET /api/studies/{study_id}/volume`
+- `GET /api/studies/{study_id}/volume` — largest renderable series by default; pass `series_uid` to select a specific series
 - `GET /api/studies/{study_id}/series/{series_uid}/mpr`
 - `POST /api/studies/{study_id}/compile`
 - `GET /api/jobs/{job_id}`

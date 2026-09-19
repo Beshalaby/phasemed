@@ -1210,10 +1210,15 @@ def source_detail(model_id: str, source_id: str) -> dict:
 
 
 @app.get("/api/studies/{study_id}/volume")
-def volume_manifest(study_id: str) -> dict:
+def volume_manifest(study_id: str, series_uid: str | None = Query(default=None)) -> dict:
     study = get_study(study_id)
     candidates = [item for item in study.get("series", []) if str(item.get("modality") or "").upper() not in {"SEG", "SR"}]
-    series = max(candidates or study.get("series", []), key=lambda item: int(item.get("instance_count") or 0), default=None)
+    if series_uid:
+        series = next((item for item in candidates if item.get("series_instance_uid") == series_uid), None)
+        if not series:
+            raise HTTPException(404, "Renderable image series not found")
+    else:
+        series = max(candidates or study.get("series", []), key=lambda item: int(item.get("instance_count") or 0), default=None)
     if not series:
         raise HTTPException(404, "No image series found")
     volume = load_series_volume(STUDY_ROOT / study_id, series)

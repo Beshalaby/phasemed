@@ -79,6 +79,8 @@ def test_api_import_compile_and_query(tmp_path: Path, monkeypatch):
     model_id = stored_study["model_id"]
     model = client.get(f"/api/models/{model_id}").json()
     assert model["objects"]
+    series_uid = stored_study["series"][0]["series_instance_uid"]
+    assert client.get(f"/api/studies/{study_id}/volume", params={"series_uid": series_uid}).json()["series_instance_uid"] == series_uid
     assert client.get(f"/api/models/{model_id}/relationships").status_code == 200
     object_id = model["objects"][0]["id"]
     reviewed = client.post(f"/api/models/{model_id}/objects/{object_id}/review", json={"status": "confirmed"})
