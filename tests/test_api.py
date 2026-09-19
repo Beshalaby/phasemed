@@ -89,6 +89,7 @@ def test_api_import_compile_and_query(tmp_path: Path, monkeypatch):
     bundle = {"resourceType": "Bundle", "entry": [{"resource": {"resourceType": "DiagnosticReport", "id": "r1", "code": {"text": "Follow-up"}, "text": "No acute finding."}}]}
     context_response = client.post(f"/api/models/{model_id}/context", json=bundle)
     assert context_response.status_code == 200
+    assert client.get(f"/api/models/{model_id}").json()["capabilities"]["clinical_context"] == "available"
     assert client.post(f"/api/models/{model_id}/context-query", json={"query": "follow-up"}).json()["results"]
 
 

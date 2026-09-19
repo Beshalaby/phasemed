@@ -988,6 +988,7 @@ def import_context(model_id: str, payload: dict) -> dict:
     items = normalize_context(payload)
     bindings = bind_context(model, items)
     model.context_items.extend(item for item in items if item not in model.context_items)
+    model.capabilities["clinical_context"] = "available" if model.context_bindings else "partial"
     save_model(model)
     audit_event("context.imported", model_id, {"item_count": len(items), "binding_count": len(bindings)})
     return {"items": items, "bindings": [item.model_dump() for item in bindings], "model_id": model.id}
