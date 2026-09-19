@@ -10,6 +10,10 @@ def _normalized_label(value: str) -> str:
     return re.sub(r"[^a-z0-9]+", " ", value.lower()).strip()
 
 
+def _max_extent_mm(geometry) -> float:
+    return max(abs(geometry.bounding_box.max[index] - geometry.bounding_box.min[index]) for index in range(3))
+
+
 def match_objects(current: PatientModel, prior: PatientModel) -> list[TemporalLink]:
     links: list[TemporalLink] = []
     used: set[str] = set()
@@ -40,6 +44,17 @@ def match_objects(current: PatientModel, prior: PatientModel) -> list[TemporalLi
         if current_volume is not None and prior_volume:
             changes["volume_delta_mm3"] = round(current_volume - prior_volume, 3)
             changes["volume_change_percent"] = round((current_volume - prior_volume) / prior_volume * 100, 2)
+        current_diameter = _max_extent_mm(current_obj.geometry)
+        prior_diameter = _max_extent_mm(prior_obj.geometry)
+        changes["diameter_delta_mm"] = round(current_diameter - prior_diameter, 3)
+        if prior_diameter:
+            changes["diameter_change_percent"] = round((current_diameter - prior_diameter) / prior_diameter * 100, 2)
+        current_surface = current_obj.geometry.surface_area_mm2
+        prior_surface = prior_obj.geometry.surface_area_mm2
+        if current_surface is not None and prior_surface is not None:
+            changes["surface_area_delta_mm2"] = round(current_surface - prior_surface, 3)
+            if prior_surface:
+                changes["surface_area_change_percent"] = round((current_surface - prior_surface) / prior_surface * 100, 2)
         link_type = "same_as_prior"
         if abs(float(changes.get("volume_change_percent", 0.0))) >= 20.0 or position_distance >= 50.0:
             link_type = "changed_from"
