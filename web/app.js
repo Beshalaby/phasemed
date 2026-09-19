@@ -371,6 +371,25 @@ async function crossValidateModel(algorithmId, datasetId, button) {
   }
 }
 
+async function batchPredictModel(algorithmId, datasetId, button) {
+  button.disabled = true;
+  button.textContent = "Running…";
+  try {
+    const dataset = await api(`/api/model-lab/datasets/${encodeURIComponent(datasetId)}`);
+    const result = await api(`/api/model-lab/algorithms/${encodeURIComponent(algorithmId)}/batch-predict`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ model_ids: dataset.rows.map((row) => row.model_id) }) });
+    const outputs = result.results || [];
+    const classifier = outputs.some((item) => item.probability_positive != null);
+    const summary = classifier ? `${outputs.filter((item) => item.prediction === 1).length}/${outputs.length} positive · mean probability ${Math.round(outputs.reduce((sum, item) => sum + Number(item.probability_positive || 0), 0) / Math.max(1, outputs.length) * 100)}%` : `mean prediction ${number(outputs.reduce((sum, item) => sum + Number(item.prediction || 0), 0) / Math.max(1, outputs.length), 2)} · ${outputs.length} models`;
+    button.parentElement.insertAdjacentHTML("beforeend", `<small class="model-lab-validation">Cohort inference · ${summary}</small>`);
+    button.remove();
+    toast("Cohort inference completed");
+  } catch (error) {
+    toast(`Cohort inference failed · ${error.message}`);
+    button.disabled = false;
+    button.textContent = "Run cohort inference";
+  }
+}
+
 async function trainModelLab(event) {
   event.preventDefault();
   const labels = {};
@@ -396,9 +415,12 @@ async function trainModelLab(event) {
     const validation = algorithm.training?.validation;
     const evaluated = validation?.metrics || metrics;
     const metricSummary = task === "regression" ? `${algorithm.training?.row_count || 0} training rows · RMSE ${number(metrics.rmse, 2)} · R² ${number(metrics.r2, 2)}${validation ? ` · ${validation.row_count} validation row${validation.row_count === 1 ? "" : "s"} · RMSE ${number(evaluated.rmse, 2)}` : ""}` : `${algorithm.training?.row_count || 0} training rows · ${Math.round((metrics.accuracy || 0) * 100)}% fit accuracy${validation ? ` · ${validation.row_count} validation row${validation.row_count === 1 ? "" : "s"} · ${Math.round((evaluated.accuracy || 0) * 100)}% validation` : ""}`;
-    $("modelLabResult").innerHTML = `<div><span>Algorithm ready</span><strong>${escapeHtml(algorithm.name)}</strong><small>${metricSummary}</small><code>${escapeHtml(algorithm.id)}</code><button class="quiet-action" data-cross-validate="${escapeHtml(algorithm.id)}" data-dataset-id="${escapeHtml(algorithm.training?.dataset_id || dataset.id)}">Cross-validate cohort</button></div>`;
+    const artifactDatasetId = algorithm.training?.dataset_id || dataset.id;
+    $("modelLabResult").innerHTML = `<div><span>Algorithm ready</span><strong>${escapeHtml(algorithm.name)}</strong><small>${metricSummary}</small><code>${escapeHtml(algorithm.id)}</code><div class="model-lab-result-actions"><button class="quiet-action" data-cross-validate="${escapeHtml(algorithm.id)}" data-dataset-id="${escapeHtml(artifactDatasetId)}">Cross-validate cohort</button><button class="quiet-action" data-batch-infer="${escapeHtml(algorithm.id)}" data-dataset-id="${escapeHtml(artifactDatasetId)}">Run cohort inference</button></div></div>`;
     const crossValidateButton = $("modelLabResult").querySelector("[data-cross-validate]");
     crossValidateButton.addEventListener("click", () => crossValidateModel(crossValidateButton.dataset.crossValidate, crossValidateButton.dataset.datasetId, crossValidateButton));
+    const batchInferenceButton = $("modelLabResult").querySelector("[data-batch-infer]");
+    batchInferenceButton.addEventListener("click", () => batchPredictModel(batchInferenceButton.dataset.batchInfer, batchInferenceButton.dataset.datasetId, batchInferenceButton));
     if (state.model) {
       const prediction = await api(`/api/model-lab/algorithms/${encodeURIComponent(algorithm.id)}/predict`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ model_id: state.model.id }) });
       const predictionLabel = task === "regression" ? number(prediction.prediction, 2) : `${Math.round(prediction.probability_positive * 100)}% positive probability`;

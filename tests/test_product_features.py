@@ -173,6 +173,8 @@ def test_model_lab_assembles_trains_and_predicts_from_persisted_models(tmp_path:
     assert forest.status_code == 200 and forest.json()["type"] == "random-forest-classifier"
     forest_prediction = client.post(f"/api/model-lab/algorithms/{forest.json()['id']}/predict", json={"model_id": model_ids[1]})
     assert forest_prediction.status_code == 200 and len(forest_prediction.json()["tree_predictions"]) == 8
+    batch_prediction = client.post(f"/api/model-lab/algorithms/{forest.json()['id']}/batch-predict", json={"model_ids": model_ids})
+    assert batch_prediction.status_code == 200 and len(batch_prediction.json()["results"]) == len(model_ids)
     listed_forest = next(item for item in client.get("/api/model-lab/algorithms").json() if item["id"] == forest.json()["id"])
     assert "trees" not in listed_forest and "feature_importance" in listed_forest
     assert len(client.get(f"/api/model-lab/algorithms/{forest.json()['id']}").json()["trees"]) == 8
