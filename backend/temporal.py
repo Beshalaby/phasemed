@@ -17,18 +17,31 @@ def _max_extent_mm(geometry) -> float:
 
 
 def _rigid_transform_point(point: tuple[float, float, float], parameters: list[float], fixed_parameters: list[float]) -> tuple[float, float, float]:
-    """Apply a SimpleITK Euler3D transform to one patient-space point."""
+    """Apply a SimpleITK-compatible Euler3D transform without clinical extras.
+
+    SimpleITK stores fixed parameters as the rotation center followed by a
+    compute-ZYX flag. Keeping this small rigid operation dependency-free means
+    persisted registration results remain usable in the base runtime, where
+    SimpleITK is intentionally optional.
+    """
     if len(parameters) != 6 or len(fixed_parameters) < 4:
         raise ValueError("Euler3D registration payload must contain six parameters and four fixed parameters")
-    try:
-        import SimpleITK as sitk
-    except ImportError as exc:  # pragma: no cover - exercised only without the optional clinical stack
-        raise ValueError("SimpleITK is required to apply an Euler3D registration result") from exc
-    transform = sitk.Euler3DTransform()
-    transform.SetParameters(tuple(float(value) for value in parameters))
-    transform.SetFixedParameters(tuple(float(value) for value in fixed_parameters[:4]))
-    result = transform.TransformPoint(tuple(float(value) for value in point))
-    return tuple(float(value) for value in result)
+    angle_x, angle_y, angle_z, tx, ty, tz = (float(value) for value in parameters)
+    cx, cy, cz = (float(value) for value in fixed_parameters[:3])
+    compute_zyx = bool(float(fixed_parameters[3]))
+    sx, sy, sz = math.sin(angle_x), math.sin(angle_y), math.sin(angle_z)
+    cos_x, cos_y, cos_z = math.cos(angle_x), math.cos(angle_y), math.cos(angle_z)
+    rx = ((1.0, 0.0, 0.0), (0.0, cos_x, -sx), (0.0, sx, cos_x))
+    ry = ((cos_y, 0.0, sy), (0.0, 1.0, 0.0), (-sy, 0.0, cos_y))
+    rz = ((cos_z, -sz, 0.0), (sz, cos_z, 0.0), (0.0, 0.0, 1.0))
+
+    def multiply(left: tuple[tuple[float, ...], ...], right: tuple[tuple[float, ...], ...]) -> tuple[tuple[float, ...], ...]:
+        return tuple(tuple(sum(left[row][inner] * right[inner][column] for inner in range(3)) for column in range(3)) for row in range(3))
+
+    rotation = multiply(rz, multiply(ry, rx) if compute_zyx else multiply(rx, ry))
+    relative = (float(point[0]) - cx, float(point[1]) - cy, float(point[2]) - cz)
+    rotated = tuple(sum(rotation[row][column] * relative[column] for column in range(3)) for row in range(3))
+    return (rotated[0] + cx + tx, rotated[1] + cy + ty, rotated[2] + cz + tz)
 
 
 def _registered_prior_model(prior: PatientModel, registration: dict[str, Any] | None) -> PatientModel:
