@@ -53,7 +53,7 @@ button:focus-visible, input:focus-visible { outline: 1px solid var(--teal); outl
 .primary-action:hover { background: #64e2d0 !important; }.primary-action:disabled { color: var(--quiet) !important; background: var(--panel-2) !important; border-color: var(--line) !important; cursor: default; }
 
 .commandbar { height: 42px; display: flex; align-items: center; gap: 3px; padding: 0 10px; border-bottom: 1px solid var(--line); background: var(--chrome); }
-.series-control { min-width: 210px; max-width: 270px; height: 29px; display: flex; align-items: center; gap: 8px; padding: 0 9px; border: 1px solid var(--line); border-radius: 5px; background: var(--panel-2); color: var(--text-soft); }
+.series-control { min-width: 210px; max-width: 270px; height: 29px; display: flex; align-items: center; gap: 8px; padding: 0 9px; border: 1px solid var(--line); border-radius: 5px; background: var(--panel-2); color: var(--text-soft); cursor: pointer; }
 .series-control strong { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 10px; font-weight: 500; }.series-control span { color: var(--muted); font-size: 10px; }
 .file-icon { color: var(--teal) !important; }
 .command-separator { width: 1px; height: 20px; margin: 0 5px; background: var(--line); }.command-spacer { flex: 1; }
