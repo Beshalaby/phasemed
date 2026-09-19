@@ -56,6 +56,7 @@ for path in (STUDY_ROOT, MODEL_ROOT):
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     global CSTORE_RECEIVER
+    recover_interrupted_jobs()
     receiver = configured_receiver(RUNTIME)
     if receiver:
         receiver.start()
@@ -114,6 +115,17 @@ def model_revision_path(model_id: str, version: int) -> Path:
     return model_revision_root(model_id) / f"{version:06d}.json"
 
 
+def _atomic_write_text(path: Path, content: str) -> None:
+    """Write a local artifact without exposing a partially-written JSON file."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_name(f".{path.name}.{uuid.uuid4().hex}.tmp")
+    try:
+        temporary.write_text(content, encoding="utf-8")
+        temporary.replace(path)
+    finally:
+        temporary.unlink(missing_ok=True)
+
+
 def _write_model_revision(model: PatientModel, reason: str) -> None:
     """Write an immutable snapshot once for each PatientModel version."""
     revision_dir = model_revision_root(model.id)
@@ -129,7 +141,7 @@ def _write_model_revision(model: PatientModel, reason: str) -> None:
         "created_at": now_iso(),
         "snapshot": model.model_dump(),
     }
-    path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+    _atomic_write_text(path, json.dumps(payload, indent=2))
 
 
 def save_model(model: PatientModel, reason: str = "persisted", bump_version: bool = False) -> None:
@@ -144,8 +156,42 @@ def save_model(model: PatientModel, reason: str = "persisted", bump_version: boo
             # Preserve a pre-revision canonical file before advancing it.
             _write_model_revision(previous, "baseline-recovered")
             model.version = previous.version + 1
-    model_path(model.id).write_text(model.model_dump_json(indent=2), encoding="utf-8")
+    _atomic_write_text(model_path(model.id), model.model_dump_json(indent=2))
     _write_model_revision(model, reason)
+
+
+def recover_interrupted_jobs() -> None:
+    """Mark work that could not survive a process restart as failed."""
+    conn = db()
+    rows = conn.execute("SELECT id, payload FROM jobs").fetchall()
+    for row in rows:
+        try:
+            job = JobState.model_validate_json(row["payload"])
+        except Exception:
+            continue
+        if job.status not in {"queued", "running"}:
+            continue
+        job.status = "failed"
+        job.stage = "Failed"
+        job.error = "The local service restarted before this job completed"
+        job.message = "Restart recovery stopped the interrupted job without fabricating derived data"
+        job.updated_at = now_iso()
+        conn.execute("UPDATE jobs SET payload=? WHERE id=?", (job.model_dump_json(), job.id))
+        study_row = conn.execute("SELECT payload FROM studies WHERE id=?", (job.study_id,)).fetchone()
+        if study_row:
+            try:
+                study = json.loads(study_row["payload"])
+                if study.get("status") == "compiling":
+                    study["status"] = "failed"
+                    conn.execute("UPDATE studies SET payload=? WHERE id=?", (json.dumps(study), job.study_id))
+            except json.JSONDecodeError:
+                pass
+    conn.commit()
+    conn.close()
+
+
+def _has_persisted_model(model_id: str | None) -> bool:
+    return bool(model_id and model_path(model_id).exists())
 
 
 def audit_event(event_type: str, subject: str, detail: dict | None = None) -> None:
@@ -406,6 +452,7 @@ async def import_study(files: list[UploadFile] = File(...)) -> dict:
             unpack_upload(data, file.filename or "instance.dcm", root)
         study, series = index_directory(root, study_id)
         save_study(study, series)
+        audit_event("study.imported", study_id, {"instance_count": study.image_count, "series_count": study.series_count})
         return {"study": {**study.model_dump(), "series": series}, "message": "DICOM study indexed"}
     except Exception:
         shutil.rmtree(root, ignore_errors=True)
@@ -420,6 +467,10 @@ def study_detail(study_id: str) -> dict:
 @app.post("/api/studies/{study_id}/compile")
 def start_compile(study_id: str, background: BackgroundTasks) -> dict:
     study = get_study(study_id)
+    if study.get("status") == "compiling":
+        raise HTTPException(409, "Study compilation is already in progress")
+    if study.get("status") == "ready" and _has_persisted_model(study.get("model_id")):
+        raise HTTPException(409, "Study is already compiled; review the existing PatientModel")
     study["status"] = "compiling"
     conn = db(); conn.execute("UPDATE studies SET payload=? WHERE id=?", (json.dumps(study), study_id)); conn.commit(); conn.close()
     job = JobState(id=f"job-{uuid.uuid4().hex[:12]}", study_id=study_id)

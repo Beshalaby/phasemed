@@ -74,6 +74,8 @@ def test_api_import_compile_and_query(tmp_path: Path, monkeypatch):
     assert compile_response.status_code == 200
     job = client.get(f"/api/jobs/{compile_response.json()['job']['id']}").json()
     assert job["status"] == "completed"
+    assert client.post(f"/api/studies/{study_id}/compile").status_code == 409
+    assert any(event["type"] == "study.imported" for event in client.get("/api/audit-events").json()["events"])
 
     stored_study = client.get(f"/api/studies/{study_id}").json()
     model_id = stored_study["model_id"]
@@ -103,6 +105,11 @@ def test_api_import_compile_and_query(tmp_path: Path, monkeypatch):
     assert audit.status_code == 200 and any(event["type"] == "context.imported" for event in audit.json()["events"])
     assert client.get("/api/audit-events", params={"subject": model_id}).json()["events"]
 
+    with TestClient(main.app) as restarted:
+        assert restarted.get(f"/api/studies/{study_id}").json()["status"] == "ready"
+        assert restarted.get(f"/api/models/{model_id}").json()["version"] == 3
+        assert restarted.get(f"/api/models/{model_id}/history").json()["current_version"] == 3
+
 
 def test_cstore_staging_can_be_promoted_to_local_study(tmp_path: Path, monkeypatch):
     runtime = tmp_path / "runtime"
@@ -123,3 +130,24 @@ def test_cstore_staging_can_be_promoted_to_local_study(tmp_path: Path, monkeypat
     assert promoted.status_code == 200
     assert promoted.json()["study"]["id"].startswith("cstore-")
     assert client.get("/api/studies").json()[0]["id"] == promoted.json()["study"]["id"]
+
+
+def test_restart_marks_interrupted_compile_as_failed(tmp_path: Path, monkeypatch):
+    runtime = tmp_path / "runtime"
+    monkeypatch.setattr(main, "RUNTIME", runtime)
+    monkeypatch.setattr(main, "STUDY_ROOT", runtime / "studies")
+    monkeypatch.setattr(main, "MODEL_ROOT", runtime / "models")
+    monkeypatch.setattr(main, "DB_PATH", runtime / "phasemed.sqlite3")
+    main.STUDY_ROOT.mkdir(parents=True)
+    main.MODEL_ROOT.mkdir(parents=True)
+
+    study = main.StudySummary(id="study-interrupted", study_instance_uid="1.2.3", status="compiling")
+    main.save_study(study, [])
+    main.save_job(main.JobState(id="job-interrupted", study_id=study.id, status="running", stage="Reconstruct source volume"))
+
+    with TestClient(main.app):
+        pass
+
+    assert main.get_study(study.id)["status"] == "failed"
+    assert main.get_job("job-interrupted").status == "failed"
+    assert "restarted" in (main.get_job("job-interrupted").error or "")
