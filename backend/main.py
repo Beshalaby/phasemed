@@ -106,9 +106,46 @@ def model_path(model_id: str) -> Path:
     return MODEL_ROOT / f"{model_id.replace(':', '_')}.json"
 
 
-def save_model(model: PatientModel) -> None:
+def model_revision_root(model_id: str) -> Path:
+    return MODEL_ROOT / "revisions" / model_id.replace(":", "_")
+
+
+def model_revision_path(model_id: str, version: int) -> Path:
+    return model_revision_root(model_id) / f"{version:06d}.json"
+
+
+def _write_model_revision(model: PatientModel, reason: str) -> None:
+    """Write an immutable snapshot once for each PatientModel version."""
+    revision_dir = model_revision_root(model.id)
+    revision_dir.mkdir(parents=True, exist_ok=True)
+    path = model_revision_path(model.id, model.version)
+    if path.exists():
+        return
+    payload = {
+        "id": f"revision:{model.id}:{model.version}",
+        "model_id": model.id,
+        "version": model.version,
+        "reason": reason,
+        "created_at": now_iso(),
+        "snapshot": model.model_dump(),
+    }
+    path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+
+
+def save_model(model: PatientModel, reason: str = "persisted", bump_version: bool = False) -> None:
     MODEL_ROOT.mkdir(parents=True, exist_ok=True)
+    canonical = model_path(model.id)
+    if canonical.exists():
+        try:
+            previous = PatientModel.model_validate_json(canonical.read_text(encoding="utf-8"))
+        except Exception:
+            previous = None
+        if previous and bump_version:
+            # Preserve a pre-revision canonical file before advancing it.
+            _write_model_revision(previous, "baseline-recovered")
+            model.version = previous.version + 1
     model_path(model.id).write_text(model.model_dump_json(indent=2), encoding="utf-8")
+    _write_model_revision(model, reason)
 
 
 def audit_event(event_type: str, subject: str, detail: dict | None = None) -> None:
@@ -163,7 +200,7 @@ def compile_in_background(job_id: str, study_id: str) -> None:
             current = get_job(job_id); current.stage = stage; current.progress = progress; current.message = message; current.updated_at = now_iso(); save_job(current)
         model = compile_study(study_id, STUDY_ROOT / study_id, update)
         model = attach_temporal_history(model)
-        save_model(model)
+        save_model(model, reason="compiled")
         audit_event("model.compiled", model.id, {"study_id": study_id, "object_count": len(model.objects), "relationship_count": len(model.relationships)})
         study = get_study(study_id); study["status"] = "ready"; study["model_id"] = model.id
         conn = db(); conn.execute("UPDATE studies SET payload=? WHERE id=?", (json.dumps(study), study_id)); conn.commit(); conn.close()
@@ -775,6 +812,60 @@ def model_detail(model_id: str) -> PatientModel:
     return load_model(model_id)
 
 
+def _model_revision_envelopes(model_id: str) -> list[dict]:
+    revision_dir = model_revision_root(model_id)
+    if not revision_dir.exists():
+        return []
+    revisions = []
+    for path in sorted(revision_dir.glob("*.json")):
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        if payload.get("model_id") == model_id and isinstance(payload.get("snapshot"), dict):
+            revisions.append(payload)
+    return sorted(revisions, key=lambda item: int(item.get("version", 0)))
+
+
+@app.get("/api/models/{model_id}/history")
+def model_history(model_id: str) -> dict:
+    model = load_model(model_id)
+    revisions = _model_revision_envelopes(model_id)
+    if not revisions:
+        revisions = [{
+            "id": f"revision:{model.id}:{model.version}",
+            "model_id": model.id,
+            "version": model.version,
+            "reason": "current-canonical-model",
+            "created_at": model.created_at,
+            "snapshot": model.model_dump(),
+        }]
+    return {
+        "model_id": model.id,
+        "current_version": model.version,
+        "revisions": [
+            {key: revision[key] for key in ("id", "model_id", "version", "reason", "created_at")}
+            for revision in revisions
+        ],
+        "provenance": {"source": "local-patient-model-revision-store", "immutable": True},
+    }
+
+
+@app.get("/api/models/{model_id}/revisions/{version}")
+def model_revision(model_id: str, version: int) -> dict:
+    load_model(model_id)
+    revisions = _model_revision_envelopes(model_id)
+    revision = next((item for item in revisions if item.get("version") == version), None)
+    if not revision:
+        raise HTTPException(404, "PatientModel revision not found")
+    return revision
+
+
+@app.get("/api/patient-models/{model_id}/history")
+def patient_model_history(model_id: str) -> dict:
+    return model_history(model_id)
+
+
 @app.get("/api/patient-models/{model_id}")
 def patient_model_detail(model_id: str) -> PatientModel:
     """Canonical external-model alias used by downstream applications."""
@@ -922,7 +1013,7 @@ def review_object(model_id: str, object_id: str, payload: dict) -> dict:
     if status not in {"confirmed", "modified", "rejected"}:
         raise HTTPException(400, "status must be confirmed, modified, or rejected")
     obj.review_status = status
-    save_model(model)
+    save_model(model, reason="object.reviewed", bump_version=True)
     audit_event("object.reviewed", object_id, {"model_id": model_id, "status": status})
     return obj.model_dump()
 
@@ -988,7 +1079,7 @@ def compare_model(model_id: str, payload: dict) -> dict:
         raise HTTPException(400, "prior_model_id is required")
     prior = load_model(prior_id)
     result = compare_models(current, prior)
-    save_model(current)
+    save_model(current, reason="temporal.compare", bump_version=True)
     return result
 
 
@@ -1010,7 +1101,7 @@ def temporal_query(model_id: str, payload: dict) -> dict:
     if operation == "compare" and prior_id:
         prior = load_model(prior_id)
         result = compare_models(model, prior)
-        save_model(model)
+        save_model(model, reason="temporal.compare", bump_version=True)
         return result
     raise HTTPException(400, "operation must be history, changes, or compare with prior_model_id")
 
@@ -1048,7 +1139,7 @@ def import_context(model_id: str, payload: dict) -> dict:
     bindings = bind_context(model, items)
     model.context_items.extend(item for item in items if item not in model.context_items)
     model.capabilities["clinical_context"] = "available" if model.context_bindings else "partial"
-    save_model(model)
+    save_model(model, reason="context.imported", bump_version=True)
     audit_event("context.imported", model_id, {"item_count": len(items), "binding_count": len(bindings)})
     return {"items": items, "bindings": [item.model_dump() for item in bindings], "model_id": model.id}
 
@@ -1067,7 +1158,7 @@ def review_context_binding(model_id: str, binding_id: str, payload: dict) -> dic
         for attached in obj.context:
             if attached.id == binding_id:
                 attached.review_status = status
-    save_model(model)
+    save_model(model, reason="context.reviewed", bump_version=True)
     audit_event("context.reviewed", binding_id, {"model_id": model_id, "status": status})
     return binding.model_dump()
 
@@ -1201,7 +1292,7 @@ def save_procedure_path(model_id: str, payload: dict) -> dict:
     result = spatial_query(model_id, query)
     path = {"id": f"path-{uuid.uuid4().hex[:12]}", "start": start, "end": end, "result": result, "created_at": now_iso()}
     model.procedure_paths.append(path)
-    save_model(model)
+    save_model(model, reason="procedure_path.created", bump_version=True)
     audit_event("procedure_path.created", path["id"], {"model_id": model_id, "intersection_count": len(result.get("intersections", []))})
     return path
 

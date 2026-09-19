@@ -83,6 +83,11 @@ def test_api_import_compile_and_query(tmp_path: Path, monkeypatch):
     object_id = model["objects"][0]["id"]
     reviewed = client.post(f"/api/models/{model_id}/objects/{object_id}/review", json={"status": "confirmed"})
     assert reviewed.status_code == 200 and reviewed.json()["review_status"] == "confirmed"
+    history_after_review = client.get(f"/api/models/{model_id}/history")
+    assert history_after_review.status_code == 200
+    assert history_after_review.json()["current_version"] == 2
+    assert [item["version"] for item in history_after_review.json()["revisions"]] == [1, 2]
+    assert client.get(f"/api/models/{model_id}/revisions/1").json()["snapshot"]["version"] == 1
     assert client.post(f"/api/models/{model_id}/spatial", json={"operation": "trajectory", "start": [0, 0, 0], "end": [4, 0, 0]}).json()["length_mm"] == 4
     assert client.get(f"/api/graph/{model_id}").json()["@id"] == model_id
 
@@ -91,6 +96,7 @@ def test_api_import_compile_and_query(tmp_path: Path, monkeypatch):
     assert context_response.status_code == 200
     assert client.get(f"/api/models/{model_id}").json()["capabilities"]["clinical_context"] == "available"
     assert client.post(f"/api/models/{model_id}/context-query", json={"query": "follow-up"}).json()["results"]
+    assert client.get(f"/api/patient-models/{model_id}/history").json()["current_version"] == 3
 
 
 def test_cstore_staging_can_be_promoted_to_local_study(tmp_path: Path, monkeypatch):

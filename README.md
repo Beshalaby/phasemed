@@ -57,6 +57,7 @@ The same optional stack includes a SimpleITK registration runner. It writes a me
 - `POST /api/studies/{study_id}/compile`
 - `GET /api/jobs/{job_id}`
 - `GET /api/models/{model_id}`
+- `GET /api/models/{model_id}/history` and `/revisions/{version}` — immutable PatientModel revision history and snapshots
 - `GET /api/models/{model_id}/objects`
 - `GET /api/models/{model_id}/objects/{object_id}`
 - `GET /api/models/{model_id}/objects/{object_id}/context`
