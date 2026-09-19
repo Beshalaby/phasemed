@@ -40,7 +40,7 @@ from .geometry import (
     within_radius,
 )
 from .models import JobState, PatientModel, SpatialQuery, StudySummary, TimelineEntry, now_iso
-from .model_lab import FEATURE_NAMES, FEATURE_SCHEMA, dataset_rows, extract_features, predict as predict_algorithm, train_algorithm
+from .model_lab import FEATURE_NAMES, FEATURE_SCHEMA, cross_validate, dataset_rows, extract_features, predict as predict_algorithm, train_algorithm
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -412,7 +412,7 @@ def model_lab_schema() -> dict:
             {"id": "random-forest", "task": "binary", "family": "ensemble", "explainability": "feature-importance-and-tree-votes"},
             {"id": "random-forest", "task": "regression", "family": "ensemble", "explainability": "feature-importance-and-tree-votes"},
         ],
-        "capabilities": ["feature-extraction", "dataset-assembly", "cohort-label-import", "binary-logistic-regression", "linear-regression", "random-forest-classification", "random-forest-regression", "deterministic-validation", "configuration-search", "batch-inference", "evaluation"],
+        "capabilities": ["feature-extraction", "dataset-assembly", "cohort-label-import", "binary-logistic-regression", "linear-regression", "random-forest-classification", "random-forest-regression", "deterministic-validation", "k-fold-cross-validation", "configuration-search", "batch-inference", "evaluation"],
     }
 
 
@@ -670,6 +670,26 @@ def model_lab_batch_predict(algorithm_id: str, payload: dict) -> dict:
         raise HTTPException(400, "model_ids must contain at least one PatientModel id")
     results = [predict_algorithm(artifact, load_model(str(model_id))) for model_id in model_ids]
     return {"algorithm_id": algorithm_id, "results": results, "provenance": {"algorithm_id": algorithm_id, "row_count": len(results)}}
+
+
+@app.post("/api/model-lab/algorithms/{algorithm_id}/cross-validate")
+def model_lab_cross_validate(algorithm_id: str, payload: dict) -> dict:
+    artifact = load_lab_artifact("algorithm", algorithm_id)
+    dataset_id = str(payload.get("dataset_id") or artifact.get("training", {}).get("dataset_id") or "")
+    if not dataset_id:
+        raise HTTPException(400, "dataset_id is required for cross-validation")
+    dataset = load_lab_artifact("dataset", dataset_id)
+    task = str(dataset.get("task") or "binary")
+    type_to_algorithm = {"binary-logistic-regression": "binary-logistic-regression", "linear-regression": "linear-regression", "random-forest-classifier": "random-forest", "random-forest-regressor": "random-forest"}
+    algorithm = type_to_algorithm.get(str(artifact.get("type")))
+    if not algorithm:
+        raise HTTPException(400, "Algorithm artifact cannot be cross-validated")
+    parameters = dict(artifact.get("parameters") or {})
+    result = cross_validate(rows=dataset.get("rows", []), task=task, algorithm=algorithm, name=str(artifact.get("name") or ""), folds=int(payload.get("folds", 5)), **parameters)
+    result["algorithm_id"] = algorithm_id
+    result["dataset_id"] = dataset_id
+    audit_event("model_lab.algorithm.cross_validated", algorithm_id, {"dataset_id": dataset_id, "fold_count": result["fold_count"]})
+    return result
 
 
 @app.post("/api/model-lab/algorithms/{algorithm_id}/evaluate")

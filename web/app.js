@@ -354,6 +354,23 @@ async function importModelLabels(file) {
   button.textContent = "Import labels";
 }
 
+async function crossValidateModel(algorithmId, datasetId, button) {
+  button.disabled = true;
+  button.textContent = "Validating…";
+  try {
+    const result = await api(`/api/model-lab/algorithms/${encodeURIComponent(algorithmId)}/cross-validate`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ dataset_id: datasetId, folds: 5 }) });
+    const metrics = result.metrics || {};
+    const summary = metrics.rmse == null ? `${Math.round((metrics.accuracy || 0) * 100)}% accuracy · ${Math.round((metrics.precision || 0) * 100)}% precision · ${Math.round((metrics.recall || 0) * 100)}% recall` : `RMSE ${number(metrics.rmse, 2)} · MAE ${number(metrics.mae, 2)} · R² ${number(metrics.r2, 2)}`;
+    button.parentElement.insertAdjacentHTML("beforeend", `<small class="model-lab-validation">${result.fold_count}-fold validation · ${summary}</small>`);
+    button.remove();
+    toast("Cross-validation completed and recorded");
+  } catch (error) {
+    toast(`Cross-validation failed · ${error.message}`);
+    button.disabled = false;
+    button.textContent = "Cross-validate cohort";
+  }
+}
+
 async function trainModelLab(event) {
   event.preventDefault();
   const labels = {};
@@ -379,7 +396,9 @@ async function trainModelLab(event) {
     const validation = algorithm.training?.validation;
     const evaluated = validation?.metrics || metrics;
     const metricSummary = task === "regression" ? `${algorithm.training?.row_count || 0} training rows · RMSE ${number(metrics.rmse, 2)} · R² ${number(metrics.r2, 2)}${validation ? ` · ${validation.row_count} validation row${validation.row_count === 1 ? "" : "s"} · RMSE ${number(evaluated.rmse, 2)}` : ""}` : `${algorithm.training?.row_count || 0} training rows · ${Math.round((metrics.accuracy || 0) * 100)}% fit accuracy${validation ? ` · ${validation.row_count} validation row${validation.row_count === 1 ? "" : "s"} · ${Math.round((evaluated.accuracy || 0) * 100)}% validation` : ""}`;
-    $("modelLabResult").innerHTML = `<div><span>Algorithm ready</span><strong>${escapeHtml(algorithm.name)}</strong><small>${metricSummary}</small><code>${escapeHtml(algorithm.id)}</code></div>`;
+    $("modelLabResult").innerHTML = `<div><span>Algorithm ready</span><strong>${escapeHtml(algorithm.name)}</strong><small>${metricSummary}</small><code>${escapeHtml(algorithm.id)}</code><button class="quiet-action" data-cross-validate="${escapeHtml(algorithm.id)}" data-dataset-id="${escapeHtml(algorithm.training?.dataset_id || dataset.id)}">Cross-validate cohort</button></div>`;
+    const crossValidateButton = $("modelLabResult").querySelector("[data-cross-validate]");
+    crossValidateButton.addEventListener("click", () => crossValidateModel(crossValidateButton.dataset.crossValidate, crossValidateButton.dataset.datasetId, crossValidateButton));
     if (state.model) {
       const prediction = await api(`/api/model-lab/algorithms/${encodeURIComponent(algorithm.id)}/predict`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ model_id: state.model.id }) });
       const predictionLabel = task === "regression" ? number(prediction.prediction, 2) : `${Math.round(prediction.probability_positive * 100)}% positive probability`;

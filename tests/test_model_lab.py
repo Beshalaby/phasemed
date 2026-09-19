@@ -1,4 +1,4 @@
-from backend.model_lab import dataset_rows, extract_features, predict, train_binary, train_forest, train_regression
+from backend.model_lab import cross_validate, dataset_rows, extract_features, predict, train_binary, train_forest, train_regression
 from backend.models import BoundingBox, Geometry, PatientModel, PatientObject, Relationship, TemporalLink
 
 
@@ -93,3 +93,13 @@ def test_large_cohort_persists_deterministic_validation_metrics():
     assert validation["row_count"] == 1
     assert validation["model_ids"] == ["m6"]
     assert "accuracy" in validation["metrics"]
+
+
+def test_cross_validation_is_deterministic_and_stratified():
+    models = [model(f"cv{i}", i % 2 == 1, float(i * 10)) for i in range(1, 9)]
+    rows = dataset_rows(models, {item.id: int(item.objects[-1].type == "finding") for item in models})
+    first = cross_validate(rows, task="binary", algorithm="random-forest", name="CV forest", folds=4, n_estimators=8, max_depth=3, seed=17)
+    second = cross_validate(rows, task="binary", algorithm="random-forest", name="CV forest", folds=4, n_estimators=8, max_depth=3, seed=17)
+    assert first["fold_count"] == 4
+    assert first["metrics"] == second["metrics"]
+    assert all(len(fold["model_ids"]) == 2 for fold in first["folds"])

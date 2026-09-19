@@ -279,6 +279,65 @@ def _forest_predictions(trees: list[dict[str, Any]], matrix: np.ndarray) -> np.n
     return np.asarray([[_predict_tree(tree, vector) for tree in trees] for vector in matrix], dtype=np.float64).mean(axis=1)
 
 
+def _artifact_predictions(artifact: dict[str, Any], matrix: np.ndarray) -> np.ndarray:
+    """Predict directly from feature rows for validation without loading a PatientModel."""
+    if artifact.get("type") in {"random-forest-classifier", "random-forest-regressor"}:
+        return _forest_predictions(artifact.get("trees") or [], matrix)
+    means = np.asarray(artifact["normalization"]["means"], dtype=np.float64)
+    scales = np.asarray(artifact["normalization"]["scales"], dtype=np.float64)
+    weights = np.asarray(artifact["weights"], dtype=np.float64)
+    raw = ((matrix - means) / scales) @ weights + float(artifact["bias"])
+    return _sigmoid(raw) if artifact.get("type") == "binary-logistic-regression" else raw
+
+
+def cross_validate(
+    rows: list[dict[str, Any]],
+    *,
+    task: str,
+    algorithm: str,
+    name: str,
+    folds: int = 5,
+    **parameters: Any,
+) -> dict[str, Any]:
+    """Run deterministic, label-aware k-fold validation over a cohort."""
+    if task not in {"binary", "regression"}:
+        raise ValueError("task must be binary or regression")
+    if len(rows) < 4:
+        raise ValueError("At least four labeled PatientModels are required for cross-validation")
+    if folds < 2 or folds > 10:
+        raise ValueError("folds must be between 2 and 10")
+    if task == "binary":
+        class_counts = Counter(int(row["label"]) for row in rows)
+        if set(class_counts) != {0, 1}:
+            raise ValueError("Binary cross-validation requires both classes")
+        folds = min(int(folds), min(class_counts.values()))
+    else:
+        folds = min(int(folds), len(rows))
+    assignments: list[list[dict[str, Any]]] = [[] for _ in range(folds)]
+    if task == "binary":
+        per_class_index: Counter[int] = Counter()
+        for row in rows:
+            label = int(row["label"])
+            assignments[per_class_index[label] % folds].append(row)
+            per_class_index[label] += 1
+    else:
+        for index, row in enumerate(rows):
+            assignments[index % folds].append(row)
+    fold_results = []
+    for fold_index, validation_rows in enumerate(assignments):
+        validation_ids = {row["model_id"] for row in validation_rows}
+        training_rows = [row for row in rows if row["model_id"] not in validation_ids]
+        artifact = train_algorithm(rows=training_rows, task=task, algorithm=algorithm, name=name, **parameters)
+        matrix = _matrix(validation_rows)
+        truth = np.asarray([float(row["label"]) for row in validation_rows], dtype=np.float64)
+        raw_predictions = _artifact_predictions(artifact, matrix)
+        metrics = _classification_metrics(truth, (raw_predictions >= 0.5).astype(int)) if task == "binary" else _regression_metrics(truth, raw_predictions)
+        fold_results.append({"fold": fold_index + 1, "model_ids": [row["model_id"] for row in validation_rows], "metrics": metrics})
+    metric_names = [key for key, value in fold_results[0]["metrics"].items() if isinstance(value, (int, float))]
+    aggregate = {key: round(float(np.mean([fold["metrics"][key] for fold in fold_results])), 6) for key in metric_names}
+    return {"task": task, "algorithm": algorithm, "fold_count": len(fold_results), "folds": fold_results, "metrics": aggregate, "parameters": parameters, "provenance": {"method": "deterministic-stratified-k-fold", "label_source": "caller-supplied", "row_count": len(rows)}}
+
+
 def train_forest(
     rows: list[dict[str, Any]],
     *,
