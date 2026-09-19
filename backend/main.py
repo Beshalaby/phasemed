@@ -637,7 +637,12 @@ def list_model_lab_algorithms() -> list[dict]:
             payload = json.loads(path.read_text(encoding="utf-8"))
         except json.JSONDecodeError:
             continue
-        results.append(payload)
+        summary = {key: payload[key] for key in ("id", "name", "type", "status", "created_at", "feature_schema", "parameters", "training", "provenance") if key in payload}
+        if "search" in payload:
+            summary["search"] = {key: payload["search"][key] for key in ("objective", "candidate_count", "selected_algorithm_id") if key in payload["search"]}
+        if "feature_importance" in payload:
+            summary["feature_importance"] = payload["feature_importance"]
+        results.append(summary)
     return results
 
 
