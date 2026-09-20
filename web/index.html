@@ -25,17 +25,15 @@
 
     <div class="commandbar" id="commandbar">
       <div class="series-control" id="seriesControl"><span class="file-icon">▧</span><strong id="seriesTitle"></strong><span id="seriesChevron">⌄</span></div>
-      <div class="command-separator"></div>
-      <button class="tool-control active" data-tool="select"><span>⌁</span>Select</button>
-      <button class="tool-control" data-tool="rotate"><span>↻</span>Rotate</button>
-      <button class="tool-control" data-tool="zoom"><span>⌕</span>Zoom</button>
-      <button class="tool-control" data-tool="measure"><span>╱</span>Measure</button>
-      <button class="tool-control" data-tool="path"><span>⌇</span>Path</button>
-      <div class="command-separator"></div>
-      <button class="tool-control" id="sceneNeighbors"><span>⋯</span>Relations</button>
-      <button class="tool-control" id="sceneIsolate"><span>◉</span>Isolate</button>
-      <button class="tool-control" id="sceneFit"><span>⌗</span>Fit</button>
-      <button class="tool-control" id="resetButton"><span>↺</span>Reset</button>
+      <div class="command-separator model-only-control"></div>
+      <button class="tool-control model-only-control" data-tool="measure"><span>╱</span>Measure</button>
+      <button class="tool-control model-only-control" data-tool="path"><span>⌇</span>Path</button>
+      <div class="command-separator model-only-control"></div>
+      <button class="tool-control model-only-control" id="sceneNeighbors" aria-pressed="false" title="Show spatial links from the selected structure"><span>⋯</span>Relations</button>
+      <button class="tool-control model-only-control" id="sceneIsolate" aria-pressed="false" title="Show only the selected structure"><span>◉</span>Isolate</button>
+      <button class="tool-control model-only-control" id="sceneAnatomy" aria-pressed="false"><span>◒</span><span id="sceneAnatomyLabel">Anatomy</span></button>
+      <button class="tool-control model-only-control" id="sceneFit" title="Center and fit the visible anatomy"><span>⌗</span>Fit</button>
+      <button class="tool-control model-only-control" id="resetButton"><span>↺</span>Reset</button>
       <div class="command-spacer"></div>
       <span class="linked-state" id="linkedState"><i></i></span>
       <div class="view-switch" role="tablist" aria-label="Workspace views">
@@ -68,6 +66,7 @@
           <div class="model-orientation" id="orientWidget" aria-hidden="true"><i></i><span data-axis="L">L</span><span data-axis="R">R</span><span data-axis="A">A</span><span data-axis="P">P</span><span data-axis="S">S</span><span data-axis="I">I</span></div>
           <div class="model-scale"><span></span><b>50 mm</b></div>
           <div class="scene-readout"><span id="sceneCount">No geometry loaded</span><span id="sceneCoordinate">LPS patient coordinates</span></div>
+          <div class="scene-gesture-hint"><span>click select</span><span>drag orbit</span><span>⇧ drag pan</span><span>scroll zoom</span></div>
           <div class="scene-callout hidden" id="sceneCallout"><strong id="calloutTitle">Object</strong><span id="calloutText">Selected</span></div>
           <div class="measure-readout hidden" id="measureReadout"><span>MEASUREMENT</span><strong id="measureValue">—</strong><button id="clearMeasure">×</button></div>
         </section>
@@ -88,7 +87,7 @@
 
         <section class="mode-panel procedure-view" id="procedureView"><div class="procedure-sidebar"><h2>Trajectory analysis</h2><p>Place an entry point and target. Length, intersections, and minimum clearances are computed from model geometry.</p><button class="primary-action" id="startPath">Draw path</button><div class="procedure-result" id="procedureResult"><span class="result-placeholder">No trajectory calculated.</span></div><small>Planning visualization only. Not clinically validated.</small></div><div class="procedure-canvas"><canvas id="procedureCanvas" aria-label="Procedure path preview"></canvas><div class="path-hint">ENTRY → TARGET</div></div></section>
 
-        <section class="mode-panel hologram-view" id="hologramView"><div class="hologram-header"><div><h2>Four-view object render</h2></div></div><div class="hologram-frame"><canvas id="hologramCanvas" aria-label="Four view hologram preview"></canvas></div></section>
+        <section class="mode-panel hologram-view" id="hologramView"><div class="hologram-frame"><canvas id="hologramCanvas" aria-label="Four-direction Pepper's Ghost hologram preview"></canvas></div><button class="hologram-exit" id="hologramExit" aria-label="Exit hologram view">× <span>Exit</span></button><div class="hologram-controls"><button id="hologramVoice" class="voice-button" aria-label="Hold to speak a command">◉ <span>Hold space to speak</span></button><button id="hologramAnatomy" aria-label="Cycle anatomy filter">◒ <span>Lungs</span></button><button id="hologramSpin" class="active" aria-pressed="true" aria-label="Toggle auto rotation">◐ <span>Pause</span></button><button id="hologramZoomOut" aria-label="Zoom out">−</button><button id="hologramZoomIn" aria-label="Zoom in">+</button><button id="hologramReset" aria-label="Reset hologram view">Reset</button><small id="hologramVoiceHint">hold space speak · drag rotate · scroll zoom</small></div></section>
 
         <div class="timeline-strip" id="timelineStrip"><button id="timelinePlay" aria-label="Play timeline">▶</button><div><strong id="timelineLabel">Current study</strong></div><div class="timeline-slider" id="timelineSlider"><span id="timelineFill"></span><input id="timelineInput" type="range" min="0" max="100" value="100" aria-label="Model time" /></div><div class="timeline-ends"><span>PRIOR</span><span>CURRENT</span></div></div>
       </section>

@@ -25,6 +25,7 @@ from .context import bind_context, normalize_context
 from .cstore import CStoreReceiver, configured_receiver
 from .dicomweb import capability_status, qido_instances, qido_series, qido_studies, request as dicomweb_request, stow_dicom, wado_instance, wado_metadata
 from .temporal import compare_models
+from .voice import MAX_AUDIO_BYTES as MAX_VOICE_AUDIO_BYTES, resolve_command, status as voice_status, transcribe as voice_transcribe, warm_local as voice_warm_local
 from .dicom import grayscale_png, index_directory, load_series_volume, unpack_upload, volume_plane_png
 from .geometry import (
     SpatialIndex,
@@ -1207,7 +1208,14 @@ def patient_model_object_mesh(model_id: str, object_id: str) -> Response:
     path = _mesh_path_for(model, obj)
     if not path:
         raise HTTPException(404, "Mesh not available for object")
-    return Response(content=path.read_bytes(), media_type="text/plain", headers={"Content-Disposition": f'inline; filename="{path.name}"'})
+    stat = path.stat()
+    # Mesh files are rewritten only when the model is recompiled, so let the browser keep them and revalidate cheaply.
+    headers = {
+        "Content-Disposition": f'inline; filename="{path.name}"',
+        "Cache-Control": "private, max-age=3600, stale-while-revalidate=86400",
+        "ETag": f'"{int(stat.st_mtime_ns):x}-{stat.st_size:x}"',
+    }
+    return Response(content=path.read_bytes(), media_type="text/plain", headers=headers)
 
 
 @app.post("/api/models/{model_id}/compare")

@@ -43,6 +43,30 @@ To reseed from scratch, stop the server and remove `.runtime/studies`, `.runtime
 
 Anatomy credit: BodyParts3D, © The Database Center for Life Science, licensed under [CC Attribution-Share Alike 2.1 Japan](https://creativecommons.org/licenses/by-sa/2.1/jp/).
 
+## Hologram voice control
+
+The hologram view has a hold-to-talk control: hold `Space` (or hold the button) and speak,
+release to send. Commands highlight anatomy, for example "highlight right lung",
+"show me the trachea", or "clear the highlight".
+
+Transcription runs locally and needs no API key:
+
+```bash
+./.venv/bin/pip install -r requirements-voice.txt
+```
+
+The first command downloads the Whisper model (`base.en`, about 150 MB) into the usual
+Hugging Face cache, or into `PHASEMED_WHISPER_CACHE_DIR` when set; afterwards it runs
+offline on the CPU in well under a second per clip. The recorded audio is decoded in
+process and never leaves the machine. The decoder is conditioned on the open
+PatientModel's own label vocabulary, so anatomy names are recognised far more reliably
+than with a general prompt.
+
+An ElevenLabs key (`PHASEMED_ELEVENLABS_API_KEY`) is an optional fallback for hosts that
+would rather not carry the model files; `PHASEMED_STT_PROVIDER` pins the engine. What the
+transcript *means* is never decided by a model: `backend/voice.py` maps the text onto
+PatientObject ids with explicit, testable rules and returns the trace it used.
+
 ## Current product flow
 
 1. Open the local workstation.

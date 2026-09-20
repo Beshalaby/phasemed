@@ -86,6 +86,10 @@ void main() {
       if (!entry) { entry = { key, state: "pending", faces: Number(object.metadata?.mesh_face_count) || 0, url: `/api/patient-models/${encodeURIComponent(modelId)}/objects/${encodeURIComponent(object.id)}/mesh` }; cache.set(key, entry); queue.push(entry); pump(); }
       return entry.state === "ready";
     },
+    // Queues every mesh of a model so views that draw more objects than the current one (hologram) open without a load pause.
+    warm(modelId, objects) { if (!modelId) return 0; let queued = 0; (objects || []).forEach((object) => { if (object?.type === "volume") return; const before = cache.size; api.ensure(modelId, object); if (cache.size !== before) queued += 1; }); return queued; },
+    pending() { return queue.length + (loading ? 1 : 0); },
+    ready(modelId, objectId) { return cache.get(api.key(modelId, objectId))?.state === "ready"; },
     setModel(modelIds) { const keep = modelIds.filter(Boolean); for (const [key, entry] of cache) if (!keep.some((id) => key.startsWith(`${id}:`))) { release(entry); cache.delete(key); } },
     // viewports: [{ x, y, w, h, mat, view }] in CSS px; items: [{ key, color: [r,g,b], alpha, depth }]
     draw({ width, height, dpr, viewports, items }) {

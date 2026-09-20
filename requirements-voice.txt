@@ -1,0 +1,4 @@
+# Optional local speech-to-text for the hologram hold-to-talk control.
+# Installing this removes any need for a hosted transcription key; the model
+# files download once (base.en is about 150 MB) and then run offline on the CPU.
+faster-whisper>=1.1
