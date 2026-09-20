@@ -763,3 +763,248 @@ body[data-display="hologram"] .hologram-controls, body[data-display="hologram"] 
 .hologram-caption small { display: block; margin-bottom: 6px; color: rgba(238, 244, 242, .62); font: 12px var(--mono); }
 .hologram-caption p { margin: 0; font-size: 16px; line-height: 1.5; }
 .hologram-caption b { color: #9ee6d8; font-weight: 600; }
+
+/* Projector type floor. The workstation was drawn at 6-10px; nothing below 11px
+   survives a projector or a screen recording. Same selectors as the rules above,
+   so these win on order alone. Desktop only: the phone layout keeps its own scale. */
+@media (min-width: 721px) {
+  .model-facts span,
+  .gesture-help,
+  .gesture-guide-head span,
+  .gesture-guide-list span,
+  .gesture-scan-preview small,
+  .dicom-viewport > header span,
+  .dicom-viewport figcaption,
+  .timeline-ends,
+  .object-lead p,
+  .measure-box > span,
+  .measure-box > small,
+  .neighbor-row small,
+  .source-row small,
+  .metric-detail,
+  .capability-head,
+  .graph-node span,
+  .evidence-item span,
+  .rail-row small,
+  .graph-root small,
+  .graph-edge small,
+  .evidence-row small,
+  .evidence-row em,
+  .sheet > small,
+  .compile-stage i,
+  .compile-stage small,
+  .ai-message > span,
+  .object-group,
+  .browser-row small,
+  .gateway-capabilities > div,
+  .gateway-item span,
+  .gateway-row span,
+  .gateway-item small,
+  .gateway-row small,
+  .model-lab-row small,
+  .feature-schema small,
+  .model-lab-result code,
+  .study-card-top,
+  .study-card p,
+  .study-card-bottom,
+  .rail-object small,
+  .rail-source small,
+  .rail-object em,
+  .source-chip,
+  .empty-kicker,
+  .empty-state small,
+  .viewport-topline > div span:last-child,
+  .viewport-live,
+  .hologram-header > span,
+  .model-orientation,
+  .model-scale,
+  .scene-gesture-hint,
+  .scene-callout span,
+  .measure-readout span,
+  .gesture-kicker,
+  .gesture-readout,
+  .gesture-console header button.gesture-preview-toggle,
+  .gesture-guide-list b,
+  .gesture-scan-preview header span,
+  .orientation,
+  .image-console label,
+  .timeline-node span,
+  .timeline-node small,
+  .change-grid span,
+  .temporal-change-type,
+  .context-kind,
+  .review-state,
+  .context-card-meta,
+  .context-card-actions button,
+  .procedure-sidebar > small,
+  .path-hint,
+  .timeline-controls > button,
+  .type-pill,
+  .section-title button,
+  .data-pairs dt,
+  .data-pairs dd,
+  .neighbor-row em,
+  .source-row em,
+  .source-kind,
+  .inspector-actions button,
+  .review-row button,
+  .capability-row,
+  .evidence-row > span,
+  .source-metadata,
+  .binding-actions button,
+  .suggestions button,
+  .gateway-item button,
+  .gateway-row button,
+  .export-options small,
+  .model-lab-grid h3,
+  .model-lab-side label,
+  .revision-facts span,
+  .audit-row span,
+  .audit-row time,
+  .model-lab-result span { font-size: 11px; }
+  .rail-import,
+  .rail-icon,
+  .gesture-enable,
+  .gesture-guide-head strong,
+  .dicom-viewport > header strong,
+  .section-intro > span,
+  .temporal-change-row small,
+  .path-stat,
+  .result-placeholder,
+  .hologram-controls small,
+  .timeline-controls strong,
+  .analysis-head-actions .quiet-action,
+  .measure-box > strong small,
+  .section-title,
+  .neighbor-row strong,
+  .source-row strong,
+  .graph-node strong,
+  .evidence-item strong,
+  .rail-row strong,
+  .graph-root strong,
+  .graph-edge strong,
+  .evidence-row strong,
+  .toast,
+  .compile-heading p,
+  .compile-stage,
+  .binding-detail,
+  .capability-explain span,
+  .browser-row strong,
+  .gateway-item strong,
+  .gateway-row strong,
+  .gateway-empty,
+  .export-options > button > span,
+  .model-lab-row span,
+  .model-lab-row input,
+  .feature-schema div,
+  .revision-row span,
+  .revision-row small,
+  .audit-heading,
+  .series-option span,
+  .series-option em,
+  .model-lab-result small,
+  .model-lab-result-actions button { font-size: 11.5px; }
+  .local-status,
+  .tool-control,
+  .mode-item,
+  .rail-tabs button,
+  .analysis-tabs button,
+  .rail-search input,
+  .modal-search input,
+  .study-empty,
+  .rail-placeholder,
+  .rail-object strong,
+  .rail-source strong,
+  .scene-callout strong,
+  .gesture-scan-preview header strong,
+  .temporal-modes button,
+  .temporal-toolbar p,
+  .context-search input,
+  .context-card p,
+  .context-empty p,
+  .hologram-exit,
+  .hologram-controls button,
+  .inspector-empty,
+  .sheet-lede,
+  .ai-message p,
+  .ai-form input,
+  .capability-explain strong,
+  .gateway-columns h3,
+  .export-options strong,
+  .model-lab-row strong,
+  .model-lab-side input,
+  .model-lab-side select,
+  .audit-row strong,
+  .utility-item small,
+  .chat-flags small,
+  .chat-trace code,
+  .rail-row.flagged > em,
+  .chat-note { font-size: 12px; }
+  .round-action,
+  .quiet-action,
+  .primary-action,
+  .topbar-actions button,
+  .series-control strong,
+  .series-control span,
+  .patient-avatar,
+  .study-card h3,
+  .dicom-viewport > header button,
+  .section-intro p,
+  .procedure-sidebar p,
+  .timeline-node strong,
+  .timeline-empty,
+  .temporal-change-row strong,
+  .procedure-result h3,
+  .model-facts strong,
+  .sheet blockquote,
+  .scene-callout strong,
+  .revision-detail,
+  .topbar-action,
+  .series-control,
+  .tool-control,
+  .chat-clear,
+  .chat-trace,
+  .chat-form button.busy,
+  .chat-suggestions button { font-size: 13px; }
+}
+
+/* Floor follow-ups: what larger type needs from the layout around it. */
+@media (min-width: 721px) {
+  .model-orientation { width: 64px; height: 64px; }
+  .model-orientation i { left: 29px; top: 29px; }
+  .model-orientation span { left: 32px; top: 32px; }
+  .scene-gesture-hint span { white-space: nowrap; }
+  .scene-gesture-hint { left: auto; right: 18px; transform: none; gap: 10px; }
+  .scene-gesture-hint span + span::before { margin-right: 10px; }
+  #sceneAnatomyLabel { font-size: inherit; }
+  .timeline-controls { grid-template-columns: 28px 120px minmax(0,1fr) 130px; }
+  .timeline-ends { gap: 12px; }
+  .change-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .gateway-columns h3 small { margin-left: 6px; color: var(--muted); font: 11px var(--mono); }
+  .context-card-actions { flex-wrap: wrap; }
+  .context-card-actions button { white-space: nowrap; }
+  #capabilityRows { display: grid; grid-template-columns: 1fr 1fr; column-gap: 16px; }
+  .capability-row { min-width: 0; gap: 6px; }
+  .capability-row span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+}
+/* Below 1220px the scale bar needs the room. */
+@media (min-width: 721px) and (max-width: 1220px) { .scene-gesture-hint { display: none; } }
+/* Short screens keep the capability heading and its Details button; only the rows go. */
+@media (max-height: 720px) and (min-width: 721px) {
+  .capability-panel { display: block; }
+  #capabilityRows { display: none; }
+  .capability-head { margin-bottom: 0; }
+}
+
+/* Discoverability: an Ask button on the scene, a shortcuts sheet, a real series button. */
+button.series-control { font: inherit; text-align: left; }
+.viewport-topline .scene-ask { pointer-events: auto; display: flex; align-items: center; gap: 7px; height: 30px; padding: 0 12px; border: 1px solid rgba(8,121,107,.28); border-radius: 8px; background: rgba(252,253,252,.9); color: var(--teal); font: 500 12px var(--sans); cursor: pointer; }
+.viewport-topline .scene-ask:hover { background: #e3f2ed; }
+.viewport-topline .scene-ask span { font-size: 11px; }
+.workstation.no-study .scene-ask { display: none; }
+.shortcut-list { display: grid; gap: 0; margin: 4px 0 0; }
+.shortcut-list div { display: grid; grid-template-columns: 150px 1fr; align-items: center; gap: 14px; min-height: 38px; border-top: 1px solid var(--line); }
+.shortcut-list dt { color: var(--muted); font-size: 12px; }.shortcut-list dd { margin: 0; color: var(--text-soft); font-size: 13px; }
+.shortcut-list kbd { display: inline-block; min-width: 22px; padding: 2px 6px; border: 1px solid var(--line-bright); border-bottom-width: 2px; border-radius: 5px; background: var(--panel-2); color: var(--text); font: 11px var(--mono); text-align: center; }
+/* Between the phone layout and the 980px desktop floor the page used to clip with no way to reach the right rail. */
+@media (min-width: 721px) and (max-width: 979px) { html, body { overflow-x: auto; } }
