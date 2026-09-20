@@ -10,6 +10,8 @@ async function api(path, options = {}) {
   return body;
 }
 
+// Problems are shown under the form, where the person is looking, not in a blocking dialog.
+function showMessage(text = "") { const message = $("formMessage"); message.textContent = text; message.hidden = !text; }
 function setStatus(ok, text = "") {
   const status = $("apiStatus");
   status.classList.toggle("ready", ok);
@@ -94,10 +96,11 @@ async function runSimulation(event) {
     const result = await api("/api/trial-studio/simulate", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(payload()) });
     renderResult(result);
     setStatus(true);
+    showMessage();
     document.querySelector(".results-column").scrollIntoView({ behavior: "smooth", block: "start" });
   } catch (error) {
     setStatus(false, error.message);
-    alert(error.message);
+    showMessage(`The simulation could not run · ${error.message}`);
   } finally {
     button.disabled = false;
     button.innerHTML = "Run simulation <span>↗</span>";
@@ -145,7 +148,7 @@ async function randomizePreview() {
     const byId = new Map(assignments.assignments.map((item) => [item.participant_id, item.arm]));
     rows.forEach((row) => { row.arm = byId.get(row.participant_id) || row.arm; });
     renderResult(latest);
-  } catch (error) { alert(error.message); }
+  } catch (error) { showMessage(`Randomization could not run · ${error.message}`); }
 }
 
 $("endpoint").addEventListener("change", setEndpointFields);

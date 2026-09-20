@@ -44,6 +44,7 @@
             <div class="form-row"><label>Interim look<input id="interimFraction" type="number" min="0.4" max="0.9" step="0.05" value="0.50" /><small>Information fraction</small></label><label>Simulation runs<input id="simulations" type="number" min="100" max="100000" step="100" value="5000" /></label></div>
             <label>Random seed<input id="seed" type="number" min="0" max="4294967295" step="1" value="20260919" /></label>
             <div class="form-actions"><button class="primary-button" type="submit">Run simulation <span>↗</span></button><button class="quiet-button" type="button" id="demoButton">Load example</button></div>
+            <p class="form-message" id="formMessage" role="alert" hidden></p>
           </form>
           <p class="privacy-note"><span>⌁</span> No patient data leaves this browser. Example outputs are generated locally from declared assumptions.</p>
         </aside>
