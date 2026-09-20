@@ -2,7 +2,21 @@
 
 Phasmed is a local-first medical imaging workstation built around a persistent PatientModel: imported DICOM studies are indexed, compiled into source-volume objects, measured deterministically, and exposed to a viewer and model API.
 
-The name is a coined blend of Greek *anatē* (structure/form) and *topos* (place), reflecting anatomy mapped into patient-specific space. It is a working product name, not a trademark or domain clearance claim.
+Phasmed is a working product name, not a trademark or domain clearance claim.
+
+## Quickstart
+
+```bash
+python3 -m venv .venv
+./.venv/bin/pip install -r requirements.txt
+./.venv/bin/python -m uvicorn backend.main:app --host 127.0.0.1 --port 8787
+```
+
+Open [http://127.0.0.1:8787/workspace](http://127.0.0.1:8787/workspace) and click **Explore guided workspace**. Seven synthetic studies are generated and built while a progress line shows each step; the 6-month follow-up then opens with its 3D model, source slices, a measured change against its baseline, and bound evidence. The first run downloads an anatomy atlas (about 70 MB); offline, it falls back to simpler built-in shapes and still works.
+
+- [Presenter guide](docs/PRESENTER_GUIDE.md) — the three-minute demo path, what each control does, and which claims are safe.
+- [Demo video shot list](docs/DEMO_VIDEO.md) — a 100-second script that mirrors the slide deck.
+- Press `?` in the workstation for keyboard shortcuts.
 
 ## Run locally
 
@@ -31,7 +45,7 @@ The same optional stack includes a SimpleITK registration runner. It writes a me
 
 ## Demo data
 
-From the workstation's empty state, choose **Explore sample workspace** to load the synthetic studies in one guided flow. The workspace opens the Rivera follow-up by default so the Model, Review, Change, Context, and Procedure surfaces are immediately available; sample studies are marked `SAMPLE` in the library.
+From the workstation's empty state, choose **Explore guided workspace** to load the synthetic studies in one guided flow. The workspace opens the Rivera follow-up by default so the Model, Review, Change, Context, and Procedure surfaces are immediately available; the library and study descriptions mark them as synthetic phantoms.
 
 With the server running, populate the workstation with seven synthetic studies: four chest CT studies (including a baseline/follow-up pair), plus lower-leg, arm, and brain studies:
 
@@ -109,8 +123,8 @@ First run with a real key — worth checking once: the configured model id is ac
 
 ## Camera gestures
 
-Open the dedicated hologram display with `Display` in the workstation command bar;
-that tab starts browser hand tracking automatically and owns the webcam. The browser
+Opening a study also opens a dedicated hologram display tab (allow pop-ups for
+`127.0.0.1`); that tab starts browser hand tracking automatically and owns the webcam. The browser
 requests webcam permission when the display tab starts; video and landmarks stay in the
 browser. The hand-tracking runtime and model are fetched on demand from the MediaPipe
 CDN, so an internet connection is needed the first time gesture control is enabled.
@@ -138,7 +152,7 @@ turning its camera off stops local tracking.
 
 ### Hologram display tab
 
-Open the `Display` control once to create the dedicated same-browser hologram tab and
+The dedicated same-browser hologram tab is created the first time a study is opened;
 leave it open. That tab owns the gesture camera and starts it automatically; the main
 tab remains the control surface and sends the current PatientModel, selection, filters,
 and highlights through a local `BroadcastChannel`. When a model is opened or compiled,
@@ -157,7 +171,7 @@ computer is required.
 
 ## Regeneron HackMIT track: Trial Studio
 
-Phasemed also includes a working clinical-trial planning and biostatistics surface at
+Phasmed also includes a working clinical-trial planning and biostatistics surface at
 `/trial-studio`. It is designed around a real early-development bottleneck: making
 sample-size and operating-characteristic assumptions explicit before a team recruits
 patients. The workflow supports binary response, continuous, and time-to-event
@@ -166,7 +180,7 @@ simulation; an interim information look; synthetic cohort generation; reproducib
 randomization; and JSON, CSV, and statistician-handoff report export.
 
 Run the app and open [http://127.0.0.1:8787/trial-studio](http://127.0.0.1:8787/trial-studio),
-then choose **Load demo** and **Run simulation**. Every result includes the declared
+then choose **Load example** and **Run simulation**. Every result includes the declared
 assumptions, planning formula, random seed, simulation count, Monte Carlo interval,
 synthetic cohort preview, warnings, and provenance. Simulation artifacts are retained
 locally under `.runtime/trial-runs/` and can be reopened through the Trial Studio API.
