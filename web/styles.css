@@ -748,3 +748,18 @@ body[data-display="hologram"] .hologram-controls, body[data-display="hologram"] 
 .empty-progress.failed { padding: 11px 14px; border: 1px solid #e3b7b3; border-radius: 8px; background: #fdf4f3; color: #8a2f28; }
 .empty-progress.failed strong { font-weight: 600; }
 .empty-progress.failed span { font: 11px/1.45 var(--mono); overflow-wrap: anywhere; }
+
+/* Dead-end states: say why, and offer the next step. */
+.timeline-empty { display: grid; gap: 6px; justify-items: start; padding: 4px 0; color: var(--text-soft); font-size: 12px; line-height: 1.45; }
+.timeline-empty strong { color: var(--text); font-size: 13px; font-weight: 600; }
+.timeline-empty p { margin: 0; max-width: 46ch; }
+.timeline-empty .quiet-action, .context-empty .quiet-action { margin-top: 6px; }
+.scene-load { margin-left: 10px; color: var(--muted); font: 11px var(--mono); }
+.scene-load.warn { color: #a8602a; }
+.sheet.failed #compileMessage { color: #8a2f28; }
+.sheet.failed .compile-track span { background: #c8574e; }
+/* A spoken question is answered on the hologram display itself: the inspector is hidden in this mode. */
+.hologram-caption { position: absolute; left: 50%; bottom: 84px; z-index: 4; width: min(720px, 84%); transform: translateX(-50%); padding: 14px 18px; border: 1px solid rgba(255, 255, 255, .16); border-radius: 12px; background: rgba(8, 12, 12, .78); color: #eef4f2; backdrop-filter: blur(10px); text-align: center; pointer-events: none; }
+.hologram-caption small { display: block; margin-bottom: 6px; color: rgba(238, 244, 242, .62); font: 12px var(--mono); }
+.hologram-caption p { margin: 0; font-size: 16px; line-height: 1.5; }
+.hologram-caption b { color: #9ee6d8; font-weight: 600; }
