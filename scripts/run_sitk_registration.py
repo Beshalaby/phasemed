@@ -20,7 +20,7 @@ from backend.dicom import index_directory, load_series_volume
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Register two Phasemed DICOM study directories")
+    parser = argparse.ArgumentParser(description="Register two Phasmed DICOM study directories")
     parser.add_argument("--current-dir", required=True, type=Path)
     parser.add_argument("--prior-dir", required=True, type=Path)
     parser.add_argument("--output-json", required=True, type=Path)

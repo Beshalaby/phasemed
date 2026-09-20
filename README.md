@@ -1,12 +1,12 @@
-# Phasemed
+# Phasmed
 
-Phasemed is a local-first medical imaging workstation built around a persistent PatientModel: imported DICOM studies are indexed, compiled into source-volume objects, measured deterministically, and exposed to a viewer and model API.
+Phasmed is a local-first medical imaging workstation built around a persistent PatientModel: imported DICOM studies are indexed, compiled into source-volume objects, measured deterministically, and exposed to a viewer and model API.
 
 The name is a coined blend of Greek *anatē* (structure/form) and *topos* (place), reflecting anatomy mapped into patient-specific space. It is a working product name, not a trademark or domain clearance claim.
 
 ## Run locally
 
-The application is standalone and does not use ChatGPT Sites or a hosted deployment. The source is versioned in the Phasemed GitHub repository for collaboration and hackathon delivery.
+The application is standalone and does not use ChatGPT Sites or a hosted deployment. The source is versioned in the Phasmed GitHub repository for collaboration and hackathon delivery.
 
 Set `PHASEMED_RUNTIME_DIR` when the local studies/models database should live somewhere other than `.runtime` in the project folder.
 

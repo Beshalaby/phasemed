@@ -494,7 +494,7 @@ def train_forest(
     algorithm_type = "random-forest-classifier" if task == "binary" else "random-forest-regressor"
     return {
         "id": f"algorithm-{uuid.uuid4().hex[:12]}",
-        "name": name.strip() or ("Phasemed random forest classifier" if task == "binary" else "Phasemed random forest regressor"),
+        "name": name.strip() or ("Phasmed random forest classifier" if task == "binary" else "Phasmed random forest regressor"),
         "type": algorithm_type,
         "status": "ready",
         "created_at": _now(),
@@ -545,7 +545,7 @@ def train_binary(rows: list[dict[str, Any]], *, name: str, iterations: int = 600
         validation_metrics = _classification_metrics(validation_truth, (validation_probabilities >= 0.5).astype(int))
     return {
         "id": f"algorithm-{uuid.uuid4().hex[:12]}",
-        "name": name.strip() or "Phasemed binary model",
+        "name": name.strip() or "Phasmed binary model",
         "type": "binary-logistic-regression",
         "status": "ready",
         "created_at": _now(),
@@ -600,7 +600,7 @@ def train_regression(rows: list[dict[str, Any]], *, name: str, iterations: int =
         validation_metrics = _regression_metrics(validation_truth, validation_predicted)
     return {
         "id": f"algorithm-{uuid.uuid4().hex[:12]}",
-        "name": name.strip() or "Phasemed linear model",
+        "name": name.strip() or "Phasmed linear model",
         "type": "linear-regression",
         "status": "ready",
         "created_at": _now(),

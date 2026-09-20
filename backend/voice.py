@@ -179,7 +179,7 @@ def transcribe_elevenlabs(audio: bytes, *, filename: str = "clip.webm", content_
         ELEVENLABS_STT_URL,
         data=body,
         method="POST",
-        headers={"xi-api-key": settings.api_key, "Content-Type": content, "User-Agent": "Phasemed-local/0.1"},
+        headers={"xi-api-key": settings.api_key, "Content-Type": content, "User-Agent": "Phasmed-local/0.1"},
     )
     try:
         with urlopen(request, timeout=45) as response:

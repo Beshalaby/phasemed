@@ -4,15 +4,15 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta name="theme-color" content="#f7f8f6" />
-  <meta name="description" content="Phasemed turns medical imaging into a persistent, queryable patient model." />
-  <title>Phasemed — Imaging, compiled</title>
+  <meta name="description" content="Phasmed turns medical imaging into a persistent, queryable patient model." />
+  <title>Phasmed — Imaging, compiled</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='9' fill='%23f7f8f6'/%3E%3Crect x='7' y='9' width='15' height='6' rx='3' transform='rotate(-45 7 9)' fill='%231d1d1f'/%3E%3Crect x='13' y='16' width='15' height='6' rx='3' transform='rotate(-45 13 16)' fill='%231d1d1f'/%3E%3C/svg%3E" />
   <link rel="stylesheet" href="/assets/landing.css" />
 </head>
 <body>
   <div class="landing" data-current="0">
     <header class="landing-nav">
-      <a class="landing-brand" href="/" aria-label="Phasemed home"><span class="brand-mark" aria-hidden="true"><i></i><i></i></span><span>Phasemed</span></a>
+      <a class="landing-brand" href="/" aria-label="Phasmed home"><span class="brand-mark" aria-hidden="true"><i></i><i></i></span><span>Phasmed</span></a>
       <nav aria-label="Primary navigation">
         <a href="#platform">Platform</a>
         <a href="#reasoning">Reasoning</a>
@@ -27,10 +27,10 @@
         <div class="hero-copy">
           <p class="kicker">A clinical imaging system</p>
           <h1 id="heroTitle">Imaging, <em>compiled.</em></h1>
-          <p class="hero-lede">Phasemed converts DICOM studies into a persistent patient model: spatially structured, longitudinally aware, and ready for computation.</p>
+          <p class="hero-lede">Phasmed converts DICOM studies into a persistent patient model: spatially structured, longitudinally aware, and ready for computation.</p>
           <div class="hero-actions"><a class="button dark" href="/workspace">Open the workstation <span aria-hidden="true">↗</span></a><a class="text-link" href="#platform">See the system <span aria-hidden="true">↓</span></a></div>
         </div>
-        <div class="hero-diagram" aria-label="Phasemed compilation pipeline">
+        <div class="hero-diagram" aria-label="Phasmed compilation pipeline">
           <div class="diagram-canvas"><div class="scan-sheet"><span>CT</span><i></i><i></i><i></i><small>source study</small></div><div class="diagram-line line-one"></div><div class="compile-node"><span class="node-glyph"><i></i><i></i><i></i></span><strong>compile</strong><small>geometry · context · time</small></div><div class="diagram-line line-two"></div><div class="model-card"><div class="model-card-head"><span>PatientModel</span><b>v1</b></div><div class="model-objects"><i class="object-anatomy"></i><i class="object-finding"></i><i class="object-vessel"></i><i class="object-anatomy"></i></div><div class="model-card-foot"><span>objects</span><span>relations</span><span>evidence</span></div></div><span class="axis axis-x">x</span><span class="axis axis-y">y</span><span class="axis axis-z">z</span></div>
           <p class="diagram-caption">One source of truth for every view, measurement, and model.</p>
         </div>
@@ -39,7 +39,7 @@
 
       <section class="landing-section platform-section" id="platform" data-slide="1" aria-labelledby="platformTitle">
         <div class="section-index">02 <span>/ 05</span></div>
-        <div class="section-heading"><p class="kicker">The platform</p><h2 id="platformTitle">The study is not the product.<br /><em>The model is.</em></h2><p>Traditional viewers organize pixels around a scan. Phasemed organizes the scan around the patient—then makes every derived result inspectable.</p></div>
+        <div class="section-heading"><p class="kicker">The platform</p><h2 id="platformTitle">The study is not the product.<br /><em>The model is.</em></h2><p>Traditional viewers organize pixels around a scan. Phasmed organizes the scan around the patient—then makes every derived result inspectable.</p></div>
         <div class="platform-flow" aria-label="Study to model workflow"><article><span class="flow-number">01</span><h3>Ingest</h3><p>DICOM files, folders, ZIPs, DICOMweb, or C-STORE enter one immutable workspace.</p><div class="flow-detail"><b>source</b><span>series · frames · metadata</span></div></article><div class="flow-connector"></div><article><span class="flow-number">02</span><h3>Compile</h3><p>Volumes, segmentations, meshes, measurements, and spatial relationships become typed objects.</p><div class="flow-detail"><b>compiler</b><span>geometry · provenance · review</span></div></article><div class="flow-connector"></div><article><span class="flow-number">03</span><h3>Reason</h3><p>Humans, deterministic tools, and algorithms query the same patient-level structure.</p><div class="flow-detail"><b>outputs</b><span>viewer · graph · model · export</span></div></article></div>
         <div class="bottom-note"><span>Every output points back to its source.</span><span>Every object can be reviewed.</span></div>
       </section>
@@ -57,7 +57,7 @@
 
       <section class="landing-section models-section" id="models" data-slide="4" aria-labelledby="modelsTitle">
         <div class="section-index">05 <span>/ 05</span></div>
-        <div class="models-layout"><div class="section-heading"><p class="kicker">Model lab</p><h2 id="modelsTitle">From patient models<br /><em>to useful models.</em></h2><p>Clinical labels stay with the people who own them. Phasemed turns compiled PatientModels into reproducible feature tables, transparent baselines, validation metrics, and batch predictions.</p><a class="button dark" href="/workspace">Open model lab <span aria-hidden="true">↗</span></a></div><div class="algorithm-panel"><div class="algorithm-head"><span>TRAINING RUN</span><strong>Finding presence</strong><small>logistic regression · validated</small></div><div class="algorithm-chart"><div class="chart-axis"><span>1.0</span><span>0.5</span><span>0.0</span></div><svg viewBox="0 0 470 220" preserveAspectRatio="none" aria-label="Model performance chart"><path class="chart-grid" d="M0 20H470 M0 110H470 M0 200H470"/><path class="chart-line muted" d="M0 174 C55 160 85 168 120 143 S185 128 225 116 S295 96 330 103 S400 67 470 42"/><path class="chart-line bright" d="M0 190 C50 175 92 174 120 156 S178 150 222 126 S286 118 330 84 S402 65 470 26"/><circle cx="330" cy="84" r="4"/><circle cx="470" cy="26" r="4"/></svg><div class="chart-labels"><span>fit</span><span>validation</span></div></div><div class="algorithm-stats"><div><span>features</span><strong>19</strong></div><div><span>training</span><strong>80%</strong></div><div><span>validation</span><strong>20%</strong></div><div><span>provenance</span><strong>saved</strong></div></div></div></div><div class="closing-line"><span>Built for inspection.</span><span>Designed for extension.</span><span>Grounded in the patient.</span></div>
+        <div class="models-layout"><div class="section-heading"><p class="kicker">Model lab</p><h2 id="modelsTitle">From patient models<br /><em>to useful models.</em></h2><p>Clinical labels stay with the people who own them. Phasmed turns compiled PatientModels into reproducible feature tables, transparent baselines, validation metrics, and batch predictions.</p><a class="button dark" href="/workspace">Open model lab <span aria-hidden="true">↗</span></a></div><div class="algorithm-panel"><div class="algorithm-head"><span>TRAINING RUN</span><strong>Finding presence</strong><small>logistic regression · validated</small></div><div class="algorithm-chart"><div class="chart-axis"><span>1.0</span><span>0.5</span><span>0.0</span></div><svg viewBox="0 0 470 220" preserveAspectRatio="none" aria-label="Model performance chart"><path class="chart-grid" d="M0 20H470 M0 110H470 M0 200H470"/><path class="chart-line muted" d="M0 174 C55 160 85 168 120 143 S185 128 225 116 S295 96 330 103 S400 67 470 42"/><path class="chart-line bright" d="M0 190 C50 175 92 174 120 156 S178 150 222 126 S286 118 330 84 S402 65 470 26"/><circle cx="330" cy="84" r="4"/><circle cx="470" cy="26" r="4"/></svg><div class="chart-labels"><span>fit</span><span>validation</span></div></div><div class="algorithm-stats"><div><span>features</span><strong>19</strong></div><div><span>training</span><strong>80%</strong></div><div><span>validation</span><strong>20%</strong></div><div><span>provenance</span><strong>saved</strong></div></div></div></div><div class="closing-line"><span>Built for inspection.</span><span>Designed for extension.</span><span>Grounded in the patient.</span></div>
       </section>
     </main>
 

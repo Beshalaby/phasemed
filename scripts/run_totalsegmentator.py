@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Run TotalSegmentator against one imported DICOM series.
 
-The Phasemed adapter contract passes the complete study directory and a
+The Phasmed adapter contract passes the complete study directory and a
 derived output directory. This runner selects the largest non-SEG image
 series, gives TotalSegmentator a clean DICOM directory, and writes one real
 DICOM SEG instance back into the adapter output directory.
@@ -43,7 +43,7 @@ def fast_mode_for_task(task: str, default: str | None, mr_override: str | None =
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Run TotalSegmentator and emit DICOM SEG for Phasemed")
+    parser = argparse.ArgumentParser(description="Run TotalSegmentator and emit DICOM SEG for Phasmed")
     parser.add_argument("--input-dir", required=True, type=Path)
     parser.add_argument("--output-dir", required=True, type=Path)
     parser.add_argument("--study-id", required=True)
