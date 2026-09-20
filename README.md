@@ -15,6 +15,7 @@ python3 -m venv .venv
 Open [http://127.0.0.1:8787/workspace](http://127.0.0.1:8787/workspace) and click **Explore guided workspace**. Seven synthetic studies are generated and built while a progress line shows each step; the 6-month follow-up then opens with its 3D model, source slices, a measured change against its baseline, and bound evidence. The first run downloads an anatomy atlas (about 70 MB); offline, it falls back to simpler built-in shapes and still works.
 
 - [Presenter guide](docs/PRESENTER_GUIDE.md) — the three-minute demo path, what each control does, and which claims are safe.
+- [Slide deck](https://claude.ai/artifact/S4MzCRt9mH4MXySavYfV4F) — 12 slides, built from screenshots of this build (the owner must share the link before others can open it).
 - [Demo video shot list](docs/DEMO_VIDEO.md) — a 100-second script that mirrors the slide deck.
 - Press `?` in the workstation for keyboard shortcuts.
 
