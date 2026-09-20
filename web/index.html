@@ -41,7 +41,6 @@
         <button class="mode-item" data-mode="slices" role="tab">Review</button>
         <button class="mode-item" data-mode="timeline" role="tab">Change</button>
         <button class="mode-item" data-mode="context" role="tab">Context</button>
-        <button class="mode-item" data-mode="procedure" role="tab">Procedure</button>
         <button class="mode-item" data-mode="hologram" role="tab">Hologram</button>
       </div>
     </div>
@@ -65,9 +64,8 @@
           <div class="viewport-topline"><div><span id="sceneSummary">Select an object to inspect it</span></div></div>
           <div class="model-orientation" id="orientWidget" aria-hidden="true"><i></i><span data-axis="L">L</span><span data-axis="R">R</span><span data-axis="A">A</span><span data-axis="P">P</span><span data-axis="S">S</span><span data-axis="I">I</span></div>
           <div class="model-scale"><span></span><b>50 mm</b></div>
-          <div class="scene-readout"><span id="sceneCount">No geometry loaded</span><span id="sceneCoordinate">LPS patient coordinates</span></div>
-          <div class="scene-gesture-hint"><span>click select</span><span>drag orbit</span><span>⇧ drag pan</span><span>scroll zoom</span></div>
           <div class="scene-callout hidden" id="sceneCallout"><strong id="calloutTitle">Object</strong><span id="calloutText">Selected</span></div>
+          <div class="path-readout hidden" id="pathReadout"><button id="clearPath" aria-label="Clear path">×</button><div class="procedure-result" id="procedureResult"></div><small>Planning visualization only. Not clinically validated.</small></div>
           <div class="measure-readout hidden" id="measureReadout"><span>MEASUREMENT</span><strong id="measureValue">—</strong><button id="clearMeasure">×</button></div>
         </section>
 
@@ -85,22 +83,17 @@
 
         <section class="mode-panel context-view" id="contextView"><header class="section-intro"><div><h2>Evidence</h2></div><button class="quiet-action" id="contextAskModel">Ask model</button></header><form class="context-search" id="contextSearchForm"><label><span>⌕</span><input id="contextQueryInput" placeholder="Search evidence" autocomplete="off" /></label><button class="primary-action">Search</button></form><div class="context-list" id="contextList"></div></section>
 
-        <section class="mode-panel procedure-view" id="procedureView"><div class="procedure-sidebar"><h2>Trajectory analysis</h2><p>Place an entry point and target. Length, intersections, and minimum clearances are computed from model geometry.</p><button class="primary-action" id="startPath">Draw path</button><div class="procedure-result" id="procedureResult"><span class="result-placeholder">No trajectory calculated.</span></div><small>Planning visualization only. Not clinically validated.</small></div><div class="procedure-canvas"><canvas id="procedureCanvas" aria-label="Procedure path preview"></canvas><div class="path-hint">ENTRY → TARGET</div></div></section>
-
         <section class="mode-panel hologram-view" id="hologramView"><div class="hologram-frame"><canvas id="hologramCanvas" aria-label="Four-direction Pepper's Ghost hologram preview"></canvas></div><button class="hologram-exit" id="hologramExit" aria-label="Exit hologram view">× <span>Exit</span></button><div class="hologram-controls"><button id="hologramVoice" class="voice-button" aria-label="Hold to speak a command">◉ <span>Hold space to speak</span></button><button id="hologramAnatomy" aria-label="Cycle anatomy filter">◒ <span>Lungs</span></button><button id="hologramSpin" class="active" aria-pressed="true" aria-label="Toggle auto rotation">◐ <span>Pause</span></button><button id="hologramZoomOut" aria-label="Zoom out">−</button><button id="hologramZoomIn" aria-label="Zoom in">+</button><button id="hologramReset" aria-label="Reset hologram view">Reset</button><small id="hologramVoiceHint">hold space speak · drag rotate · scroll zoom</small></div></section>
 
         <div class="timeline-strip" id="timelineStrip"><button id="timelinePlay" aria-label="Play timeline">▶</button><div><strong id="timelineLabel">Current study</strong></div><div class="timeline-slider" id="timelineSlider"><span id="timelineFill"></span><input id="timelineInput" type="range" min="0" max="100" value="100" aria-label="Model time" /></div><div class="timeline-ends"><span>PRIOR</span><span>CURRENT</span></div></div>
       </section>
 
       <aside class="right-rail" id="rightRail">
-    <div class="analysis-head"><div><h2 id="inspectorTitle">Nothing selected</h2></div><div class="analysis-head-actions"><button class="quiet-action" id="historyButton" aria-label="Open model revision history">History</button><button id="inspectorMenu" aria-label="Model actions" title="Model actions">•••</button></div></div>
+    <div class="analysis-head"><div><h2 id="inspectorTitle">Nothing selected</h2><p id="inspectorSubtitle"></p></div><div class="analysis-head-actions"><button class="quiet-action" id="historyButton" aria-label="Open model revision history">History</button><button id="inspectorMenu" aria-label="Model actions" title="Model actions">•••</button></div></div>
         <div class="analysis-tabs" role="tablist" aria-label="Analysis panels"><button class="active" data-analysis-tab="object">Object</button><button data-analysis-tab="graph">Graph</button><button data-analysis-tab="evidence">Evidence</button></div>
         <div class="analysis-body active" data-analysis-panel="object"><div class="inspector-content" id="inspectorContent"><div class="inspector-empty"><span></span><p>Select anatomy in the model or library.</p></div></div></div>
         <div class="analysis-body" data-analysis-panel="graph"><div id="graphInspector" class="graph-inspector"><div class="rail-placeholder">Select an object to inspect its spatial graph.</div></div></div>
         <div class="analysis-body" data-analysis-panel="evidence"><div id="evidenceInspector" class="evidence-inspector"><div class="rail-placeholder">No evidence selected.</div></div></div>
-        <div class="model-facts"><div><span>Objects</span><strong id="metricObjects">—</strong></div><div><span>Relations</span><strong id="metricRelationships">—</strong></div><div><span>Sources</span><strong id="metricSources">—</strong></div><div><span>State</span><strong id="metricState">Waiting</strong></div></div>
-        <span class="metric-detail" id="metricStateDetail">Import a study to begin</span>
-        <button class="capability-summary" id="capabilityInfoInspector" aria-label="View model capabilities"><span id="capabilitySummary">Capabilities</span><em>Details</em></button>
       </aside>
     </main>
 
