@@ -14,11 +14,12 @@ import threading
 import uuid
 from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from fastapi import BackgroundTasks, FastAPI, File, Form, HTTPException, Query, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, JSONResponse, Response
+from fastapi.responses import FileResponse, JSONResponse, Response, StreamingResponse
+from pydantic import BaseModel, ConfigDict, Field
 from fastapi.staticfiles import StaticFiles
 
 from .compiler import compile_study
@@ -42,12 +43,17 @@ from .geometry import (
     trajectory_length,
     within_radius,
 )
+from .assistant import MAX_HISTORY_CHARS, StudyFacts, answer as assistant_answer, status as assistant_status
+from .env import load_env_file
 from .models import JobState, PatientModel, SpatialQuery, StudySummary, TimelineEntry, now_iso
 from .model_lab import FEATURE_NAMES, FEATURE_SCHEMA, analyze_cohort, cross_validate, dataset_rows, extract_features, predict as predict_algorithm, summarize_dataset, train_algorithm
 from .trial_studio import randomize as trial_randomize, simulate as trial_simulate
 
 
 ROOT = Path(__file__).resolve().parents[1]
+# Local secrets live in a git-ignored .env; never read it under pytest, so a test run cannot pick up a real key.
+if "pytest" not in sys.modules:
+    load_env_file(ROOT / ".env")
 RUNTIME = Path(os.getenv("PHASEMED_RUNTIME_DIR", str(ROOT / ".runtime"))).expanduser().resolve()
 STUDY_ROOT = RUNTIME / "studies"
 MODEL_ROOT = RUNTIME / "models"
@@ -294,7 +300,7 @@ def compile_in_background(job_id: str, study_id: str, rebuild: bool = False) -> 
 
 @app.get("/api/health")
 def health() -> dict:
-    return {"status": "ok", "service": "phasemed-local-api", "version": app.version, "capabilities": {**capability_status(), **adapter_status(), **voice_status()}}
+    return {"status": "ok", "service": "phasemed-local-api", "version": app.version, "capabilities": {**capability_status(), **adapter_status(), **voice_status(), **assistant_status()}}
 
 
 @app.get("/api/voice/status")
@@ -1565,6 +1571,80 @@ def patient_model_tool(model_id: str, payload: dict) -> dict:
         query = SpatialQuery(operation="trajectory", start=args.get("start"), end=args.get("end"))
         return {"tool": name, **spatial_query(model_id, query), "provenance": {"model_id": model.id}}
     raise HTTPException(400, f"Unknown PatientModel tool: {name}")
+
+
+class AssistantMessage(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    role: Literal["user", "assistant"]
+    content: str = Field(min_length=1, max_length=4000)
+
+
+class AssistantRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    messages: list[AssistantMessage] = Field(min_length=1, max_length=24)
+    selected_object_id: str | None = Field(default=None, max_length=300)
+    highlights: list[str] = Field(default_factory=list, max_length=200)
+    mode: str | None = Field(default=None, max_length=24)
+    temporal_mode: str | None = Field(default=None, max_length=24)
+
+
+def _assistant_facts(model: PatientModel, prior: PatientModel | None) -> StudyFacts:
+    """Study facts the digest needs. Dates come from the study record: the model timeline holds import times."""
+    def study(study_id: str) -> dict:
+        try:
+            return get_study(study_id)
+        except HTTPException:
+            return {}
+    current, before = study(model.study_id), study(prior.study_id) if prior else {}
+    return StudyFacts(modality=current.get("modality"), description=current.get("description"), study_date=current.get("study_date"), prior_study_date=before.get("study_date"), patient_name=current.get("patient_name"), patient_id=current.get("patient_id") or model.patient_id)
+
+
+@app.post("/api/patient-models/{model_id}/assistant")
+async def patient_model_assistant(model_id: str, request: AssistantRequest) -> StreamingResponse:
+    """Chat about the open PatientModel. Streams NDJSON events: status, delta, action, done, error.
+
+    The language model reads a de-identified digest and calls deterministic tools;
+    it never writes to the PatientModel, so no revision is created here.
+    """
+    model = load_model(model_id)
+    if assistant_status()["assistant"] != "configured":
+        raise HTTPException(503, "The assistant is not configured on this workstation")
+    if request.messages[-1].role != "user":
+        raise HTTPException(400, "the last message must come from the user")
+    if sum(len(message.content) for message in request.messages) > MAX_HISTORY_CHARS:
+        raise HTTPException(413, "the conversation is too long; start a new one")
+    prior = None
+    if model.metadata.get("prior_model_id"):
+        try:
+            prior = load_model(str(model.metadata["prior_model_id"]))
+        except HTTPException:
+            prior = None
+    facts = _assistant_facts(model, prior)
+    messages = [message.model_dump() for message in request.messages]
+    ui_state = {"selected_object_id": request.selected_object_id, "highlights": request.highlights, "mode": request.mode, "temporal_mode": request.temporal_mode}
+    loop, queue, cancel = asyncio.get_running_loop(), asyncio.Queue(), threading.Event()
+
+    def worker() -> None:
+        emit = lambda event: loop.call_soon_threadsafe(queue.put_nowait, event)
+        summary: dict = {"outcome": "failed"}
+        try:
+            summary = assistant_answer(model, prior, facts, messages, ui_state, emit, cancel)
+        finally:
+            try:
+                audit_event("assistant.answered" if summary.get("outcome") == "answered" else "assistant.failed", model_id, {"model_id": model_id, "question": messages[-1]["content"][:500], **summary})
+            finally:
+                loop.call_soon_threadsafe(queue.put_nowait, None)
+
+    async def events():
+        task = asyncio.create_task(asyncio.to_thread(worker))
+        try:
+            while (event := await queue.get()) is not None:
+                yield json.dumps(event, ensure_ascii=False) + "\n"
+        finally:
+            cancel.set()  # a closed tab or the stop button ends the upstream request instead of letting it run on
+            await asyncio.shield(task)
+
+    return StreamingResponse(events(), media_type="application/x-ndjson", headers={"Cache-Control": "no-store", "X-Accel-Buffering": "no"})
 
 
 @app.get("/api/graph/{model_id}")
