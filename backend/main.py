@@ -6,6 +6,7 @@ import io
 import json
 import math
 import os
+import re
 import shutil
 import sqlite3
 import subprocess
@@ -508,21 +509,57 @@ def _demo_studies() -> list[dict]:
     return [study for study in list_studies() if str(study.get("patient_id", "")).startswith("DEMO-")]
 
 
+_DEMO_SEED_STEP = re.compile(r"^\[(\d+)/(\d+)\]\s+(.*)$")
+DEMO_SEED_TIMEOUT_S = 900
+
+
+def _update_demo_seed(job_id: str, **fields: Any) -> None:
+    with DEMO_SEED_LOCK:
+        DEMO_SEED_JOBS[job_id] = {**DEMO_SEED_JOBS.get(job_id, {"id": job_id}), **fields}
+
+
+def _demo_seed_progress(line: str) -> dict[str, Any] | None:
+    """Turn one line of the seeder's output into job fields the workstation can show."""
+    step = _DEMO_SEED_STEP.match(line)
+    if step:
+        number, total = int(step.group(1)), int(step.group(2))
+        return {"study_count": number - 1, "study_total": total, "message": f"Building study {number} of {total} · {step.group(3).split(' (')[0]}"}
+    if line.startswith("Seeding "):
+        return {"message": "Preparing studies…"}
+    if line.startswith("atlas: fetching"):
+        return {"message": "Downloading anatomy shapes (first run only, about 70 MB)…"}
+    if line.startswith("atlas: voxelizing"):
+        return {"message": "Preparing anatomy shapes…"}
+    return None
+
+
 def _run_demo_seed(job_id: str, base_url: str) -> None:
+    # -u: the seeder's progress lines must arrive as they are printed, not when its pipe buffer fills.
+    command = [sys.executable, "-u", str(ROOT / "scripts" / "seed_demo_data.py"), "--base-url", base_url]
+    errors: list[str] = []
     try:
-        command = [sys.executable, str(ROOT / "scripts" / "seed_demo_data.py"), "--base-url", base_url]
-        result = subprocess.run(command, cwd=ROOT, capture_output=True, text=True, timeout=900, check=False)
-        output = (result.stdout or result.stderr or "").strip().splitlines()
-        with DEMO_SEED_LOCK:
-            DEMO_SEED_JOBS[job_id] = {
-                "id": job_id,
-                "status": "completed" if result.returncode == 0 else "failed",
-                "message": output[-1] if output else ("Workspace ready" if result.returncode == 0 else "Workspace could not be prepared"),
-                "study_count": len(_demo_studies()),
-            }
+        process = subprocess.Popen(command, cwd=ROOT, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, bufsize=1)
+        drain = threading.Thread(target=lambda: errors.extend(line.rstrip() for line in process.stderr), daemon=True)
+        drain.start()
+        watchdog = threading.Timer(DEMO_SEED_TIMEOUT_S, process.kill)
+        watchdog.start()
+        try:
+            for line in process.stdout:
+                fields = _demo_seed_progress(line.strip())
+                if fields:
+                    _update_demo_seed(job_id, **fields)
+            returncode = process.wait()
+        finally:
+            watchdog.cancel()
+        drain.join(timeout=5)
+        if returncode == 0:
+            _update_demo_seed(job_id, status="completed", message="Workspace ready", study_count=len(_demo_studies()))
+        else:
+            # The last stderr line is the exception itself; the lines above it are the traceback.
+            reason = next((line.strip() for line in reversed(errors) if line.strip()), "the demo studies could not be prepared")
+            _update_demo_seed(job_id, status="failed", message=reason[:240], study_count=len(_demo_studies()))
     except Exception as exc:
-        with DEMO_SEED_LOCK:
-            DEMO_SEED_JOBS[job_id] = {"id": job_id, "status": "failed", "message": str(exc), "study_count": len(_demo_studies())}
+        _update_demo_seed(job_id, status="failed", message=str(exc)[:240], study_count=len(_demo_studies()))
 
 
 @app.post("/api/demo/seed")
@@ -535,7 +572,7 @@ def seed_demo_workspace(request: Request) -> dict:
         if running:
             return {"job": running}
         job_id = f"demo-{uuid.uuid4().hex[:12]}"
-        job = {"id": job_id, "status": "running", "message": "Preparing DICOM studies…", "study_count": 0}
+        job = {"id": job_id, "status": "running", "message": "Preparing studies…", "study_count": 0, "study_total": 0}
         DEMO_SEED_JOBS[job_id] = job
     host = request.url.hostname or "127.0.0.1"
     port = request.url.port

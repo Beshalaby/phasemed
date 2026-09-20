@@ -1196,32 +1196,34 @@ async function prefetchStudies() {
 
 async function loadStudies() { try { state.studies = await api("/api/studies"); renderStudies(); if (!state.study && state.studies.length) { const ready = state.studies.find((study) => /follow-up/i.test(study.description || "") && study.status === "ready") || state.studies.find((study) => study.status === "ready") || state.studies[0]; await openStudy(ready.id); } else renderWorkspace(); } catch (error) { renderWorkspace(); toast(`Workspace unavailable · ${error.message}`); } }
 
-async function pollDemoSeed(jobId) {
-  const button = $("emptyDemo");
-  const job = await api(`/api/demo/seed/${encodeURIComponent(jobId)}`);
-  if (job.job.status === "running") {
-    button.textContent = job.job.study_count ? `Loading ${job.job.study_count} studies…` : "Preparing workspace…";
-    setTimeout(() => pollDemoSeed(jobId).catch((error) => { button.disabled = false; button.textContent = "Explore guided workspace"; toast(`Workspace failed · ${error.message}`); }), 1200);
-    return;
+// The guided workspace takes a while on first run (seven studies, and a one-time anatomy download), so the
+// empty state shows what the server is doing; a failure stays on screen with the real reason and a retry.
+function showDemoSeed(job, failed = false) {
+  const button = $("emptyDemo"); const status = $("emptyDemoStatus"); if (!button || !status) return;
+  const total = Number(job?.study_total) || 0; const done = Math.min(Number(job?.study_count) || 0, total);
+  button.disabled = !failed && Boolean(job); button.textContent = failed ? "Try again" : job ? "Preparing workspace…" : "Explore guided workspace";
+  status.classList.toggle("hidden", !job); status.classList.toggle("failed", failed);
+  status.innerHTML = !job ? "" : failed ? `<strong>The guided workspace could not be prepared.</strong><span>${escapeHtml(job.message || "Unknown error")}</span>` : `<span>${escapeHtml(job.message || "Preparing studies…")}</span><i><b style="width:${total ? Math.max(4, Math.round(done / total * 100)) : 4}%"></b></i>${total ? `<small>${done} of ${total} studies ready</small>` : ""}`;
+}
+async function pollDemoSeed(jobId, seen = 0) {
+  const { job } = await api(`/api/demo/seed/${encodeURIComponent(jobId)}`);
+  if (job.status === "running") {
+    showDemoSeed(job);
+    if ((job.study_count || 0) > seen) { try { state.studies = await api("/api/studies"); renderStudies(); } catch {} }  // studies appear in the library as they finish
+    await new Promise((resolve) => setTimeout(resolve, 900));
+    return pollDemoSeed(jobId, Math.max(seen, job.study_count || 0));
   }
-  if (job.job.status !== "completed") throw new Error(job.job.message || "Workspace could not be prepared");
-  await loadStudies();
-  toast(`${job.job.study_count || 0} synthetic studies ready`);
+  if (job.status !== "completed") throw new Error(job.message || "Workspace could not be prepared");
+  showDemoSeed(null); await loadStudies(); toast(`${job.study_count || 0} synthetic studies ready`);
 }
 
 async function seedDemoWorkspace() {
-  const button = $("emptyDemo");
-  button.disabled = true;
-  button.textContent = "Preparing workspace…";
+  showDemoSeed({ message: "Starting…" });
   try {
     const result = await api("/api/demo/seed", { method: "POST" });
-    if (result.job.status === "completed") { await loadStudies(); toast(`${result.job.study_count || 0} synthetic studies ready`); return; }
+    if (result.job.status === "completed") { showDemoSeed(null); await loadStudies(); toast(`${result.job.study_count || 0} synthetic studies ready`); return; }
     await pollDemoSeed(result.job.id);
-  } catch (error) {
-    button.disabled = false;
-    button.textContent = "Explore guided workspace";
-    toast(`Workspace failed · ${error.message}`);
-  }
+  } catch (error) { showDemoSeed({ message: error.message }, true); }
 }
 
 async function importFiles(files) { if (!files?.length) return; ensureHologramDisplayTab(); const form = new FormData(); [...files].forEach((file) => form.append("files", file, file.name)); try { toast("Indexing DICOM study…"); const result = await api("/api/studies/import", { method: "POST", body: form }); state.studies.unshift(result.study); await openStudy(result.study.id); startCompile(result.study.id); } catch (error) { toast(`Import failed · ${error.message}`); } }

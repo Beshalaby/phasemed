@@ -739,3 +739,12 @@ body[data-display="hologram"] .hologram-controls, body[data-display="hologram"] 
 [data-contrast="high"] .chat-message.assistant, [data-contrast="high"] .chat-form input, [data-contrast="high"] .chat-chip { border-color: #5b6b66; }
 [data-contrast="high"] .chat-note, [data-contrast="high"] .chat-status, [data-contrast="high"] .chat-trace { color: var(--text-soft); }
 @media (prefers-reduced-motion: reduce) { .chat-status span { animation: none; opacity: 1; } }
+
+/* Guided-workspace progress in the empty state: what the server is doing, and a failure that stays readable. */
+.empty-progress { width: min(440px, 86%); margin: 14px auto 2px; display: grid; gap: 7px; justify-items: center; color: var(--text-soft); font-size: 12px; line-height: 1.45; text-align: center; }
+.empty-progress i { width: 100%; height: 4px; overflow: hidden; border-radius: 2px; background: var(--line); }
+.empty-progress i b { display: block; height: 100%; border-radius: 2px; background: var(--teal); transition: width .5s ease; }
+.empty-progress small { color: var(--muted); font: 11px var(--mono); }
+.empty-progress.failed { padding: 11px 14px; border: 1px solid #e3b7b3; border-radius: 8px; background: #fdf4f3; color: #8a2f28; }
+.empty-progress.failed strong { font-weight: 600; }
+.empty-progress.failed span { font: 11px/1.45 var(--mono); overflow-wrap: anywhere; }

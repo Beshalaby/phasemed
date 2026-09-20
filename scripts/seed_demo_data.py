@@ -292,7 +292,8 @@ def seg_file(spec: dict, uids: dict, labels: np.ndarray) -> tuple[str, bytes]:
     shared.PlaneOrientationSequence = Sequence([orientation])
     ds.SharedFunctionalGroupsSequence = Sequence([shared])
     segments, frames, groups = [], [], []
-    segment_specs = spec.get("segments") or {int(item["label"]): item["name"] for item in spec.get("structures", [])}
+    # Chest studies carry neither key: their labels come from the atlas, named by SEGMENTS.
+    segment_specs = spec.get("segments") or {int(item["label"]): item["name"] for item in spec.get("structures", [])} or SEGMENTS
     present = [(value, name) for value, name in segment_specs.items() if (labels == value).any()]
     for number, (value, name) in enumerate(present, start=1):
         segment = Dataset()
@@ -354,8 +355,9 @@ def main() -> int:
         if existing and not args.force:
             print(f"{len(existing)} demo studies already present; pass --force to add another set.")
             return 0
+        print(f"Seeding {len(ALL_STUDIES)} studies", flush=True)
         try:
-            atlas = thorax_labels(offline=args.offline, log=lambda message: print(f"atlas: {message}"))
+            atlas = thorax_labels(offline=args.offline, log=lambda message: print(f"atlas: {message}", flush=True))
             print(f"Anatomy: {ATTRIBUTION}")
         except AtlasUnavailable as exc:
             if args.offline:
@@ -363,10 +365,11 @@ def main() -> int:
                 return 1
             print(f"warning: {exc}; falling back to the analytic ellipsoid phantom", file=sys.stderr)
             atlas = None
-        for spec in ALL_STUDIES:
+        for number, spec in enumerate(ALL_STUDIES, start=1):
             started = time.monotonic()
+            print(f"[{number}/{len(ALL_STUDIES)}] {spec['description']}", flush=True)  # read live by the workstation's demo button
             model_id = seed_study(client, spec, atlas)
-            print(f"{spec['patient_id']}  {spec['date']}  {spec['description']}  ->  {model_id}  ({time.monotonic() - started:.1f}s)")
+            print(f"{spec['patient_id']}  {spec['date']}  {spec['description']}  ->  {model_id}  ({time.monotonic() - started:.1f}s)", flush=True)
     return 0
 
 
