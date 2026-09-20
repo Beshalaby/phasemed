@@ -72,7 +72,7 @@ button:focus-visible, input:focus-visible { outline: 1px solid var(--teal); outl
 .patient-avatar { width: 30px; height: 30px; display: grid; place-items: center; border-radius: 50%; color: var(--teal); background: #12201e; border: 1px solid #294844; font-size: 11px; }
 .rail-patient > div:first-child { min-width: 0; }.rail-patient strong { display: block; color: var(--text); font-size: 11px; font-weight: 560; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }.rail-patient span { display: block; margin-top: 4px; color: var(--muted); font: 11px var(--mono); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .rail-patient button { width: 23px; height: 23px; border: 1px solid var(--line); border-radius: 5px; background: var(--panel-2); color: var(--text-soft); font-size: 14px; }
-.rail-tabs, .analysis-tabs { height: 34px; display: grid; grid-template-columns: repeat(3, 1fr); border-bottom: 1px solid var(--line); }
+.rail-tabs, .analysis-tabs { height: 34px; display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; border-bottom: 1px solid var(--line); }
 .rail-tabs button, .analysis-tabs button { position: relative; border: 0; background: transparent; color: var(--muted); font-size: 11px; }
 .rail-tabs button::after, .analysis-tabs button::after { content: ""; position: absolute; left: 14px; right: 14px; bottom: -1px; height: 1px; background: transparent; }
 .rail-tabs button.active, .analysis-tabs button.active { color: var(--text); }.rail-tabs button.active::after, .analysis-tabs button.active::after { background: var(--teal); }

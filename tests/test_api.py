@@ -19,9 +19,11 @@ def test_landing_page_and_workstation_routes():
     workspace = client.get("/workspace")
     assert workspace.status_code == 200
     assert "Open a study" in workspace.text
-    assert 'data-temporal-mode="overlay"' in workspace.text
-    assert 'data-temporal-mode="difference"' in workspace.text
-    assert 'data-temporal-mode="morph"' in workspace.text
+    # The workspace is three views; Change, Context, Procedure and the evidence surfaces were removed.
+    for mode in ("model", "slices", "hologram"):
+        assert f'data-mode="{mode}"' in workspace.text
+    for removed in ('data-mode="timeline"', 'data-mode="context"', 'data-mode="procedure"', 'data-temporal-mode=', 'id="contextImport"', 'data-library-view="sources"', 'data-analysis-tab="evidence"'):
+        assert removed not in workspace.text
     assert 'data-tool="select"' not in workspace.text
     assert 'data-tool="rotate"' not in workspace.text
     assert 'data-tool="pan"' not in workspace.text
