@@ -45,6 +45,7 @@ from .geometry import (
     within_radius,
 )
 from .assistant import MAX_HISTORY_CHARS, StudyFacts, answer as assistant_answer, status as assistant_status
+from .elasticsearch import ElasticsearchBridge
 from .env import load_env_file
 from .models import JobState, PatientModel, SpatialQuery, StudySummary, TimelineEntry, now_iso
 from .model_lab import FEATURE_NAMES, FEATURE_SCHEMA, analyze_cohort, cross_validate, dataset_rows, extract_features, predict as predict_algorithm, summarize_dataset, train_algorithm
@@ -66,11 +67,21 @@ DEMO_SEED_LOCK = threading.Lock()
 DEMO_SEED_JOBS: dict[str, dict[str, Any]] = {}
 for path in (STUDY_ROOT, MODEL_ROOT, TRIAL_ROOT):
     path.mkdir(parents=True, exist_ok=True)
+SEARCH_BRIDGE = ElasticsearchBridge()
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     global CSTORE_RECEIVER
     recover_interrupted_jobs()
+    SEARCH_BRIDGE.start()
+    if SEARCH_BRIDGE.settings.configured:
+        for study in list_studies():
+            SEARCH_BRIDGE.index_study(study)
+        for path in MODEL_ROOT.glob("model_*.json"):
+            try:
+                SEARCH_BRIDGE.index_model(PatientModel.model_validate_json(path.read_text(encoding="utf-8")))
+            except (OSError, ValueError):
+                continue
     receiver = configured_receiver(RUNTIME)
     if receiver:
         receiver.start()
@@ -81,6 +92,7 @@ async def lifespan(_app: FastAPI):
         if CSTORE_RECEIVER:
             CSTORE_RECEIVER.stop()
             CSTORE_RECEIVER = None
+        SEARCH_BRIDGE.close()
 
 
 app = FastAPI(title="Phasmed Local API", version="0.1.0", lifespan=lifespan)
@@ -104,6 +116,7 @@ def save_study(study: StudySummary, series: list[dict]) -> None:
     payload = study.model_dump()
     payload["series"] = series
     conn = db(); conn.execute("INSERT OR REPLACE INTO studies(id,payload) VALUES(?,?)", (study.id, json.dumps(payload))); conn.commit(); conn.close()
+    SEARCH_BRIDGE.index_study(payload)
 
 
 def get_study(study_id: str) -> dict:
@@ -172,6 +185,7 @@ def save_model(model: PatientModel, reason: str = "persisted", bump_version: boo
             model.version = previous.version + 1
     _atomic_write_text(model_path(model.id), model.model_dump_json(indent=2))
     _write_model_revision(model, reason)
+    SEARCH_BRIDGE.index_model(model)
 
 
 def recover_interrupted_jobs() -> None:
@@ -301,7 +315,13 @@ def compile_in_background(job_id: str, study_id: str, rebuild: bool = False) -> 
 
 @app.get("/api/health")
 def health() -> dict:
-    return {"status": "ok", "service": "phasemed-local-api", "version": app.version, "capabilities": {**capability_status(), **adapter_status(), **voice_status(), **assistant_status()}}
+    return {"status": "ok", "service": "phasemed-local-api", "version": app.version, "capabilities": {**capability_status(), **adapter_status(), **voice_status(), **assistant_status(), **SEARCH_BRIDGE.status()}}
+
+
+@app.get("/api/search/status")
+def search_capability() -> dict:
+    """Expose secondary-index state without making it part of the core workflow."""
+    return SEARCH_BRIDGE.status()
 
 
 @app.get("/api/voice/status")
