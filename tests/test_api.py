@@ -12,11 +12,14 @@ def test_landing_page_and_workstation_routes():
     client = TestClient(main.app)
     landing = client.get("/")
     assert landing.status_code == 200
-    assert "Imaging, <em>compiled.</em>" in landing.text
-    assert "data-slide=\"4\"" in landing.text
+    assert 'id="heroTitle"' in landing.text
+    assert 'id="lab"' in landing.text
+    assert 'href="/trial-studio"' in landing.text
     workspace = client.get("/workspace")
     assert workspace.status_code == 200
-    assert "Open a study" in workspace.text
+    assert "Start with a study" in workspace.text
+    assert 'id="emptyDemo"' in workspace.text
+    assert 'id="emptyImport"' in workspace.text
     assert 'data-temporal-mode="overlay"' in workspace.text
     assert 'data-temporal-mode="difference"' in workspace.text
     assert 'data-temporal-mode="morph"' in workspace.text
@@ -26,14 +29,54 @@ def test_landing_page_and_workstation_routes():
     assert 'data-tool="zoom"' not in workspace.text
     assert 'class="tool-control model-only-control" data-tool="measure"' in workspace.text
     assert 'class="tool-control model-only-control" id="sceneNeighbors"' in workspace.text
-    assert 'class="tool-control model-only-control" id="sceneFit"' in workspace.text
+    assert 'id="sceneFit"' not in workspace.text
     assert 'id="sceneZoomOut"' not in workspace.text
     assert 'id="sceneAnatomy"' in workspace.text
     assert 'id="sceneAnatomyLabel"' in workspace.text
     assert 'id="sliceInput"' in workspace.text
-    assert 'data-tool="path"' in workspace.text
+    assert 'data-tool="path"' not in workspace.text
     assert 'id="hologramExit"' in workspace.text
     assert "Pepper's Ghost hologram preview" in workspace.text
+    assert 'id="gestureButton"' in workspace.text
+    assert 'id="gestureVideo"' in workspace.text
+    assert 'id="gestureOverlay"' in workspace.text
+    assert 'id="gesturePreviewToggle"' in workspace.text
+    assert 'id="gestureScanPreview"' in workspace.text
+    assert 'id="gestureScanImage"' in workspace.text
+    assert "Gesture guide" in workspace.text
+    assert "Two fists + drag" in workspace.text
+    assert "Open palm + hold" in workspace.text
+    assert '/assets/gesture-camera.js' in workspace.text
+    assert 'id="displayHologramButton"' not in workspace.text
+
+    gesture_camera = client.get("/assets/gesture-camera.js")
+    assert gesture_camera.status_code == 200
+    assert 'const VISION_VERSION = "0.10.21"' in gesture_camera.text
+    assert "${VISION_CDN}/vision_bundle.mjs" in gesture_camera.text
+    assert "${VISION_CDN}/wasm" in gesture_camera.text
+
+    app_script = client.get("/assets/app.js")
+    assert app_script.status_code == 200
+    assert 'window.open(`${location.origin}${route}?display=hologram`, "phasemed-hologram")' in app_script.text
+    assert 'function ensureHologramDisplayTab()' in app_script.text
+    assert 'ensureHologramDisplayTab(); state.study = await api' in app_script.text
+    assert 'async function startCompile(studyId) { ensureHologramDisplayTab();' in app_script.text
+    assert 'if (!isHologramDisplay || !state.model) return;' in app_script.text
+    assert 'if (isHologramDisplay) { startGestureCamera(); hologramChannel?.postMessage({ type: "ready" }); }' in app_script.text
+    assert 'localStorage.getItem("phasemed-gesture-preview")' in app_script.text
+    assert 'Two pinches · move apart / together to zoom' in app_script.text
+    assert 'type: "scan-preview"' in app_script.text
+    assert 'function handleTwoFistSliceGesture' in app_script.text
+    assert 'function resetGestureContact' in app_script.text
+    assert 'endGestureOrbit(null, true)' in app_script.text
+
+
+def test_demo_seed_is_idempotent_when_samples_exist(monkeypatch):
+    monkeypatch.setattr(main, "_demo_studies", lambda: [{"patient_id": "DEMO-001"}, {"patient_id": "DEMO-002"}])
+    response = TestClient(main.app).post("/api/demo/seed")
+    assert response.status_code == 200
+    assert response.json()["job"]["status"] == "completed"
+    assert response.json()["job"]["study_count"] == 2
 
 
 def dicom_bytes(tmp_path: Path) -> bytes:

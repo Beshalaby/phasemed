@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="theme-color" content="#f7f8f6" />
+  <meta name="description" content="Trial Studio — transparent clinical-trial planning and biostatistical simulation." />
+  <title>Trial Studio · Phasemed</title>
+  <link rel="stylesheet" href="/assets/trial-studio.css" />
+</head>
+<body>
+  <div class="trial-shell">
+    <header class="trial-nav">
+      <a class="brand" href="/" aria-label="Phasemed home"><span class="brand-mark" aria-hidden="true"><i></i><i></i></span><span>Phasemed</span></a>
+      <div class="nav-context"><span class="eyebrow">REGENERON TRACK</span><strong>Trial Studio</strong></div>
+      <nav><a href="/workspace">Patient model</a><a class="active" href="/trial-studio">Trial Studio</a><a href="/">About</a></nav>
+    </header>
+
+    <main class="trial-main">
+      <section class="trial-hero">
+        <div>
+          <p class="eyebrow">DESIGN → SIMULATE → EXPLAIN</p>
+          <h1>Make a trial design<br /><em>defensible before day one.</em></h1>
+          <p class="hero-lede">A local, reproducible workbench for early clinical-trial planning. Turn an estimand and a few assumptions into sample-size targets, simulated operating characteristics, and a report a statistician can review.</p>
+          <div class="hero-flags"><span><i></i> Seeded simulation</span><span><i></i> Synthetic data only</span><span><i></i> Open-source workflow</span></div>
+        </div>
+        <div class="hero-diagram" aria-label="Trial Studio workflow"><div class="diagram-step active"><b>01</b><span>Design</span><small>endpoint · arms · assumptions</small></div><div class="diagram-link"></div><div class="diagram-step"><b>02</b><span>Simulate</span><small>power · attrition · interim look</small></div><div class="diagram-link"></div><div class="diagram-step"><b>03</b><span>Handoff</span><small>report · cohort · provenance</small></div></div>
+      </section>
+
+      <section class="studio-grid">
+        <aside class="design-card">
+          <div class="card-heading"><div><p class="eyebrow">STUDY DESIGN</p><h2>Set the assumptions</h2></div><span class="status-dot" id="apiStatus" title="Local API status"></span></div>
+          <form id="designForm">
+            <label>Study name<input id="title" value="RESPONSE-01 · Early efficacy" maxlength="120" /></label>
+            <label>Indication<input id="indication" value="Metastatic solid tumor" maxlength="120" /></label>
+            <div class="form-row"><label>Phase<select id="phase"><option>Phase 1b</option><option selected>Phase 2</option><option>Phase 3</option></select></label><label>Endpoint<select id="endpoint"><option value="binary" selected>Binary response</option><option value="continuous">Continuous outcome</option><option value="time_to_event">Time to event</option></select></label></div>
+            <div class="arm-row"><label>Control arm<input id="controlLabel" value="Standard of care" /></label><label>Investigational arm<input id="treatmentLabel" value="REGN-4018" /></label></div>
+            <div id="binaryFields" class="endpoint-fields"><div class="form-row"><label>Control response<input id="controlRate" type="number" min="0.001" max="0.999" step="0.01" value="0.30" /><small>Expected proportion</small></label><label>Treatment response<input id="treatmentRate" type="number" min="0.001" max="0.999" step="0.01" value="0.48" /><small>Expected proportion</small></label></div></div>
+            <div id="continuousFields" class="endpoint-fields hidden"><div class="form-row"><label>Control mean<input id="controlMean" type="number" step="0.1" value="10" /></label><label>Treatment mean<input id="treatmentMean" type="number" step="0.1" value="12" /></label></div><label>Standard deviation<input id="standardDeviation" type="number" min="0.01" step="0.1" value="5" /></label></div>
+            <div id="survivalFields" class="endpoint-fields hidden"><div class="form-row"><label>Hazard ratio<input id="hazardRatio" type="number" min="0.1" max="3" step="0.05" value="0.70" /></label><label>Event fraction<input id="eventRate" type="number" min="0.05" max="0.99" step="0.01" value="0.65" /></label></div></div>
+            <div class="form-row"><label>Two-sided alpha<input id="alpha" type="number" min="0.001" max="0.2" step="0.001" value="0.05" /></label><label>Target power<input id="targetPower" type="number" min="0.5" max="0.99" step="0.01" value="0.80" /></label></div>
+            <div class="form-row"><label>Dropout rate<input id="dropoutRate" type="number" min="0" max="0.5" step="0.01" value="0.10" /></label><label>Allocation ratio<input id="allocationRatio" type="number" min="0.25" max="4" step="0.25" value="1" /><small>Investigational : control</small></label></div>
+            <div class="form-row"><label>Interim look<input id="interimFraction" type="number" min="0.4" max="0.9" step="0.05" value="0.50" /><small>Information fraction</small></label><label>Simulation runs<input id="simulations" type="number" min="100" max="100000" step="100" value="5000" /></label></div>
+            <label>Random seed<input id="seed" type="number" min="0" max="4294967295" step="1" value="20260919" /></label>
+            <div class="form-actions"><button class="primary-button" type="submit">Run simulation <span>↗</span></button><button class="quiet-button" type="button" id="demoButton">Load demo</button></div>
+          </form>
+          <p class="privacy-note"><span>⌁</span> No patient data leaves this browser. Demo outputs are generated locally from declared assumptions.</p>
+        </aside>
+
+        <section class="results-column" aria-live="polite">
+          <div class="result-empty" id="resultEmpty"><span class="empty-glyph">∿</span><p class="eyebrow">READY WHEN YOU ARE</p><h2>Stress-test the study before you recruit.</h2><p>Choose an endpoint and run a seeded simulation. The result stays inspectable: formula, assumptions, Monte Carlo interval, synthetic cohort, and report are returned together.</p></div>
+          <div id="resultContent" class="hidden">
+            <div class="result-top"><div><p class="eyebrow">OPERATING CHARACTERISTICS</p><h2 id="resultTitle">—</h2><p id="resultSubtitle">—</p></div><div class="result-actions"><button class="quiet-button" id="copyReport">Copy report</button><button class="quiet-button" id="downloadJson">Export JSON</button><button class="quiet-button" id="downloadCsv">Export cohort CSV</button></div></div>
+            <div class="metric-grid"><article><span>Expected enrolled</span><strong id="metricEnrolled">—</strong><small>includes attrition buffer</small></article><article><span>Simulated power</span><strong id="metricPower">—</strong><small id="metricPowerDetail">—</small></article><article><span>Analyzable</span><strong id="metricAnalyzable">—</strong><small id="metricFormula">—</small></article><article><span>Interim rejection</span><strong id="metricInterim">—</strong><small>at information look</small></article></div>
+            <div class="analysis-card"><div class="analysis-heading"><div><p class="eyebrow">POWER CHECK</p><h3>Does the design hit its target?</h3></div><span class="confidence-badge" id="powerBadge">—</span></div><div class="power-meter"><span id="powerBar"></span><i id="powerTarget"></i></div><div class="meter-labels"><span>0%</span><span id="powerTargetLabel">Target 80%</span><span>100%</span></div><div class="analysis-grid"><div><span>95% Monte Carlo interval</span><strong id="powerInterval">—</strong></div><div><span>Median p-value</span><strong id="medianP">—</strong></div><div><span>Mean observed</span><strong id="meanObserved">—</strong></div><div><span>Mean effect</span><strong id="meanEffect">—</strong></div></div></div>
+            <div class="lower-grid"><div class="analysis-card report-card"><div class="analysis-heading"><div><p class="eyebrow">STATISTICIAN HANDOFF</p><h3>Reproducible protocol brief</h3></div><span class="run-id" id="runId">—</span></div><pre id="reportText"></pre></div><div class="analysis-card"><div class="analysis-heading"><div><p class="eyebrow">SYNTHETIC COHORT</p><h3>Randomized preview</h3></div><button class="quiet-button" id="randomizeButton">Randomize IDs</button></div><div class="table-wrap"><table><thead><tr><th>Participant</th><th>Arm</th><th>Status</th><th>Outcome</th></tr></thead><tbody id="cohortBody"></tbody></table></div><p class="table-note" id="cohortNote">—</p></div></div>
+            <div class="warning-card" id="warningCard"><span>!</span><div><strong>Review before use</strong><p id="warnings">—</p></div></div>
+          </div>
+        </section>
+      </section>
+    </main>
+    <footer class="trial-footer"><span>PHASEMED · Trial Studio v0.1</span><span>Planning aid only · not for clinical decisions</span><a href="/workspace">Open patient-model workspace ↗</a></footer>
+  </div>
+  <script src="/assets/trial-studio.js"></script>
+</body>
+</html>

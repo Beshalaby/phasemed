@@ -31,6 +31,8 @@ The same optional stack includes a SimpleITK registration runner. It writes a me
 
 ## Demo data
 
+From the workstation's empty state, choose **Explore sample workspace** to load the synthetic studies in one guided flow. The workspace opens the Rivera follow-up by default so the Model, Review, Change, Context, and Procedure surfaces are immediately available; sample studies are marked `SAMPLE` in the library.
+
 With the server running, populate the workstation with four synthetic chest CT studies (three demo patients, one with a baseline and a follow-up):
 
 ```bash
@@ -49,10 +51,11 @@ The hologram view has a hold-to-talk control: hold `Space` (or hold the button) 
 release to send. Commands highlight anatomy, for example "highlight right lung",
 "show me the trachea", or "clear the highlight".
 
-Transcription runs locally and needs no API key:
+Transcription runs locally and needs no API key. It is included in the main
+`requirements.txt`; existing virtual environments can add it with:
 
 ```bash
-./.venv/bin/pip install -r requirements-voice.txt
+./.venv/bin/pip install -r requirements.txt
 ```
 
 The first command downloads the Whisper model (`base.en`, about 150 MB) into the usual
@@ -67,6 +70,44 @@ would rather not carry the model files; `PHASEMED_STT_PROVIDER` pins the engine.
 transcript *means* is never decided by a model: `backend/voice.py` maps the text onto
 PatientObject ids with explicit, testable rules and returns the trace it used.
 
+## Camera gestures
+
+Open the dedicated hologram display with `Display` in the workstation command bar;
+that tab starts browser hand tracking automatically and owns the webcam. The browser
+requests webcam permission when the display tab starts; video and landmarks stay in the
+browser. The hand-tracking runtime and model are fetched on demand from the MediaPipe
+CDN, so an internet connection is needed the first time gesture control is enabled.
+
+Opening a PatientModel from the workspace now reuses the named hologram tab when it is
+already open, or opens it when it is missing. The display receives the model immediately
+and starts its camera again for each newly opened model.
+
+The main tab also has an optional diagnostic camera: click its camera button to see the
+mirrored preview and the currently detected action. `Hide preview` hides the video but
+keeps gesture detection running; `Show preview` restores it. The gesture guide below
+the preview explains the pose, movement, and result for each control.
+
+- Pinch and move: orbit the model or hologram.
+- Pinch with both hands and move them apart/together: zoom.
+- Point and hold: select a visible structure, or place a procedure-path point.
+- Two fists and drag down/up: scrub through the axial scan layers; both tabs show a scan preview.
+- Swipe left/right: move through Model, Review, Change, Context, Procedure, and Hologram.
+- Peace sign: cycle anatomy; move it up/down to reverse the direction.
+- Hold a fist: fit the current view.
+
+The control layer uses the same camera state as mouse and keyboard interaction. The
+dedicated display keeps its webcam active while it is left open; closing that tab or
+turning its camera off stops local tracking.
+
+### Hologram display tab
+
+Open the `Display` control once to create the dedicated same-browser hologram tab and
+leave it open. That tab owns the gesture camera and starts it automatically; the main
+tab remains the control surface and sends the current PatientModel, selection, filters,
+and highlights through a local `BroadcastChannel`. When a model is opened or compiled,
+the open hologram tab switches to it immediately. No video, network relay, or second
+computer is required.
+
 ## Current product flow
 
 1. Open the local workstation.
@@ -76,6 +117,40 @@ PatientObject ids with explicit, testable rules and returns the trace it used.
 5. The workstation opens the model for object selection, source-image MPR, geometry, relationships, evidence, review, timeline, procedure-path, hologram, and deterministic model queries.
 6. Import FHIR/plain context; normalized records retain raw provenance and bind to the most specific matching object available.
 7. Export the active PatientModel as JSON or JSON-LD-compatible graph data for downstream services.
+
+## Regeneron HackMIT track: Trial Studio
+
+Phasemed also includes a working clinical-trial planning and biostatistics surface at
+`/trial-studio`. It is designed around a real early-development bottleneck: making
+sample-size and operating-characteristic assumptions explicit before a team recruits
+patients. The workflow supports binary response, continuous, and time-to-event
+endpoints; two-arm allocation; attrition adjustment; seeded Monte Carlo power
+simulation; an interim information look; synthetic cohort generation; reproducible
+randomization; and JSON, CSV, and statistician-handoff report export.
+
+Run the app and open [http://127.0.0.1:8787/trial-studio](http://127.0.0.1:8787/trial-studio),
+then choose **Load demo** and **Run simulation**. Every result includes the declared
+assumptions, planning formula, random seed, simulation count, Monte Carlo interval,
+synthetic cohort preview, warnings, and provenance. Simulation artifacts are retained
+locally under `.runtime/trial-runs/` and can be reopened through the Trial Studio API.
+
+Trial Studio API endpoints:
+
+- `POST /api/trial-studio/simulate` — validate a design and run a seeded simulation.
+- `POST /api/trial-studio/randomize` — reproducibly assign synthetic participant IDs.
+- `GET /api/trial-studio/runs` and `GET /api/trial-studio/runs/{run_id}` — inspect saved runs.
+
+The implementation is a transparent planning aid, not a validated statistical package.
+It does not make clinical decisions, infer patient outcomes, or replace a prespecified
+statistical analysis plan. A statistician must review the estimand, multiplicity,
+missing-data, censoring, subgroup, and interim-decision rules before real use.
+
+### Presenter guide
+
+The product walkthrough is documented separately in
+[`docs/PRESENTER_GUIDE.md`](docs/PRESENTER_GUIDE.md). It explains what each screen is
+for, the shortest reliable demo path, what happens behind each control, and which
+claims are safe to make. The UI stays focused on the actual clinical workflow.
 
 ## Architecture
 

@@ -3,16 +3,105 @@ const escapeHtml = (value) => String(value ?? "").replace(/[&<>"']/g, (char) => 
 const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
 const number = (value, digits = 1) => Number(value ?? 0).toLocaleString(undefined, { maximumFractionDigits: digits });
 const typeColor = (object) => object?.type === "finding" || object?.type === "lesion" ? "#efc77e" : object?.type === "device" ? "#c7b2ef" : object?.type === "region" ? "#98d6ca" : "#70b8b0";
+const isHologramDisplay = new URLSearchParams(window.location.search).get("display") === "hologram";
+const hologramChannel = "BroadcastChannel" in window ? new BroadcastChannel("phasemed-hologram-display") : null;
+let hologramSyncTimer = null;
 
 const state = {
-  studies: [], study: null, viewerStudy: null, model: null, priorModel: null, priorStudy: null, viewModel: null, selectedId: null, mode: "model", filterReady: false,
+  studies: [], study: null, viewerStudy: null, model: null, priorModel: null, priorStudy: null, viewModel: null, selectedId: null, mode: isHologramDisplay ? "hologram" : "model", filterReady: false,
   search: "", objectSearch: "", contextQuery: "", showLinks: false, isolate: false, scenePreset: "all", pathMode: false, pathPoints: [],
   volume: null, slice: 0, windowCenter: 40, windowWidth: 400, timelineValue: 100, temporalMode: "current", toastTimer: null, previewToken: 0,
   theme: localStorage.getItem("phasemed-theme") || "light", activeTool: "rotate", sceneYaw: .3, scenePitch: .15, sceneZoom: 1, scenePanX: 0, scenePanY: 0, drag: null,
   measurePoints: [], measureResult: null, timelineTimer: null, sliceRefreshTimer: null, modelLabDataset: null,
   holoSpin: true, holoYaw: 0, holoPitch: .15, holoZoom: 1, holoPanX: 0, holoPanY: 0, holoDrag: null, holoRaf: null, holoLast: 0,
   highlights: [], voiceState: "idle", voiceRecorder: null, voiceChunks: [], voiceTranscript: "", voiceHeld: false, voiceStartedAt: 0,
+  gestureCamera: null, gestureFrame: null, gesturePinch: null, gestureSpan: null, gestureSwipe: null, gesturePoint: null, gestureFistSince: 0, gestureActionAt: 0, gesturePose: "off", gestureHandCount: 0, gestureMomentumRaf: null, gestureVoiceSince: 0, gestureVoiceAnchor: null, gestureVoiceActive: false, gesturePreviewVisible: localStorage.getItem("phasemed-gesture-preview") !== "hidden", gestureSliceDrag: null, gestureScanPreview: false, gestureScanUrl: "",
 };
+
+function hologramSyncPayload() {
+  return {
+    type: "sync",
+    study: state.study,
+    model: state.model,
+    priorModel: state.priorModel,
+    selectedId: state.selectedId,
+    scenePreset: state.scenePreset,
+    highlights: state.highlights,
+    temporalMode: state.temporalMode,
+    slice: state.slice,
+    scanPreview: state.gestureScanPreview,
+    camera: {
+      yaw: state.mode === "hologram" ? state.holoYaw : state.sceneYaw,
+      pitch: state.mode === "hologram" ? state.holoPitch : state.scenePitch,
+      zoom: state.mode === "hologram" ? state.holoZoom : state.sceneZoom,
+      panX: state.mode === "hologram" ? state.holoPanX : state.scenePanX,
+      panY: state.mode === "hologram" ? state.holoPanY : state.scenePanY,
+    },
+  };
+}
+
+function broadcastHologramSync(immediate = false) {
+  if (isHologramDisplay || !hologramChannel) return;
+  if (immediate) {
+    clearTimeout(hologramSyncTimer);
+    hologramSyncTimer = null;
+    hologramChannel.postMessage(hologramSyncPayload());
+    return;
+  }
+  if (hologramSyncTimer) return;
+  hologramSyncTimer = setTimeout(() => { hologramSyncTimer = null; hologramChannel.postMessage(hologramSyncPayload()); }, 70);
+}
+
+function applyHologramSync(message) {
+  if (!isHologramDisplay || message?.type !== "sync") return;
+  state.study = message.study || null;
+  state.viewerStudy = state.study;
+  state.model = message.model || null;
+  state.priorModel = message.priorModel || null;
+  state.viewModel = state.model;
+  state.selectedId = message.selectedId || defaultObjectId(state.model);
+  state.scenePreset = message.scenePreset || "all";
+  state.highlights = message.highlights || [];
+  state.temporalMode = message.temporalMode || "current";
+  state.slice = Number.isFinite(Number(message.slice)) ? Number(message.slice) : state.slice;
+  state.gestureScanPreview = Boolean(message.scanPreview);
+  state.mode = "hologram";
+  // The dedicated display tab owns its camera and hologram pose. Keep the
+  // first pose from the control tab, but do not overwrite gesture rotations
+  // when the control tab later broadcasts a selection or model update.
+  if (message.camera && !state.gestureCamera?.running && !state.gestureCamera?.loading) {
+    state.holoYaw = Number(message.camera.yaw ?? state.holoYaw);
+    state.holoPitch = clamp(Number(message.camera.pitch ?? state.holoPitch), -Math.PI / 2, Math.PI / 2);
+    state.holoZoom = clamp(Number(message.camera.zoom ?? state.holoZoom), HOLO_ZOOM_RANGE[0], HOLO_ZOOM_RANGE[1]);
+    state.holoPanX = Number(message.camera.panX ?? state.holoPanX);
+    state.holoPanY = Number(message.camera.panY ?? state.holoPanY);
+  }
+  window.MeshView?.setModel([state.model?.id, state.priorModel?.id]);
+  renderWorkspace();
+  if (state.study) ensureHologramVolume(state.study);
+  if (state.model) { warmCurrentModel(); startHoloSpin(); startGestureCameraForModel(); }
+}
+
+function openHologramTab({ announce = true } = {}) {
+  if (isHologramDisplay) return null;
+  const route = ["/workspace", "/workstation"].includes(location.pathname.replace(/\/$/, "")) ? location.pathname : "/workspace";
+  const display = window.open(`${location.origin}${route}?display=hologram`, "phasemed-hologram");
+  if (!display) { if (announce) toast("The browser blocked the hologram tab · allow pop-ups for Phasemed"); return null; }
+  broadcastHologramSync(true);
+  if (announce) toast(state.model ? "Hologram display tab opened" : "Hologram display tab ready · waiting for a model");
+  return display;
+}
+
+function ensureHologramDisplayTab() {
+  if (isHologramDisplay) return null;
+  return openHologramTab({ announce: false });
+}
+
+if (hologramChannel) hologramChannel.addEventListener("message", (event) => {
+  if (event.data?.type === "ready" && !isHologramDisplay) broadcastHologramSync(true);
+  else if (event.data?.type === "scan-preview" && !isHologramDisplay) applyGestureScanState(event.data);
+  else applyHologramSync(event.data);
+});
 
 async function api(path, options = {}) {
   const response = await fetch(path, options);
@@ -131,12 +220,13 @@ function renderStudies() { $("demoCredit")?.classList.toggle("hidden", !state.st
   if (!visible.length) { list.innerHTML = `<div class="study-empty">${state.studies.length ? "No studies match this filter." : "No studies"}</div>`; return; }
   list.innerHTML = visible.map((study) => {
     const active = state.study?.id === study.id;
+    const isDemo = String(study.patient_id || "").startsWith("DEMO-");
     const statusClass = study.status === "ready" ? "ready" : study.status === "compiling" ? "compiling" : "";
     const detail = study.status === "ready" ? `${study.image_count || 0} images · ${study.series_count || 0} series` : study.status === "compiling" ? "PatientModel is building" : `${study.image_count || 0} images · ready to compile`;
     const series = [...(study.series || [])].filter((item) => String(item.modality || "").toUpperCase() !== "SEG").sort((a, b) => (b.instance_count || 0) - (a.instance_count || 0))[0];
     const midpoint = Math.max(0, Math.floor((series?.instance_count || study.image_count || 1) / 2));
     const preview = series?.series_instance_uid ? `/api/studies/${encodeURIComponent(study.id)}/series/${encodeURIComponent(series.series_instance_uid)}/mpr?plane=axial&index=${midpoint}&window_center=40&window_width=400` : "";
-    return `<article class="study-card ${active ? "active" : ""}" data-study-id="${escapeHtml(study.id)}" tabindex="0"><div class="study-preview">${preview ? `<img src="${preview}" alt="" loading="lazy" />` : `<span>${escapeHtml(study.modality || "DCM")}</span>`}<i class="study-dot ${statusClass}"></i></div><div class="study-card-body"><div class="study-card-top"><span>${escapeHtml(study.study_date || "UNDATED")}</span><b>${escapeHtml(study.modality || "DICOM")}</b></div><h3>${escapeHtml(study.description || "Imported study")}</h3><p>${escapeHtml(detail)}</p><div class="study-card-bottom"><span>${escapeHtml(study.status)}</span>${study.status === "imported" ? `<button class="text-button" data-compile-study="${escapeHtml(study.id)}">Build model</button>` : `<span>${active ? "OPEN" : "OPEN →"}</span>`}</div></div></article>`;
+    return `<article class="study-card ${active ? "active" : ""}" data-study-id="${escapeHtml(study.id)}" tabindex="0"><div class="study-preview">${preview ? `<img src="${preview}" alt="" loading="lazy" />` : `<span>${escapeHtml(study.modality || "DCM")}</span>`}<i class="study-dot ${statusClass}"></i></div><div class="study-card-body"><div class="study-card-top"><span>${escapeHtml(study.study_date || "UNDATED")}</span><b>${isDemo ? "SAMPLE" : escapeHtml(study.modality || "DICOM")}</b></div><h3>${escapeHtml(study.description || "Imported study")}</h3><p>${escapeHtml(detail)}</p><div class="study-card-bottom"><span>${escapeHtml(study.status)}</span>${study.status === "imported" ? `<button class="text-button" data-compile-study="${escapeHtml(study.id)}">Build model</button>` : `<span>${active ? "OPEN" : "OPEN →"}</span>`}</div></div></article>`;
   }).join("");
   list.querySelectorAll("[data-study-id]").forEach((card) => { card.addEventListener("click", () => openStudy(card.dataset.studyId)); card.addEventListener("keydown", (event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); openStudy(card.dataset.studyId); } }); });
   list.querySelectorAll("[data-compile-study]").forEach((button) => button.addEventListener("click", (event) => { event.stopPropagation(); startCompile(button.dataset.compileStudy); }));
@@ -144,33 +234,27 @@ function renderStudies() { $("demoCredit")?.classList.toggle("hidden", !state.st
 
 function renderHeader() {
   if (!state.study) {
-    $("patientRoute").style.display = "none"; $("seriesControl").style.display = "none"; $("headerPatient").textContent = ""; $("studyTitle").textContent = ""; $("railPatient").textContent = "Studies"; $("seriesTitle").textContent = ""; $("modelCrumb").textContent = ""; $("studySubtitle").textContent = "Import a study"; return;
+    $("seriesControl").style.display = "none"; $("seriesTitle").textContent = ""; return;
   }
-  $("patientRoute").style.display = "flex"; $("seriesControl").style.display = "flex";
-  const patient = state.study.patient_name || state.study.patient_id || "Local patient";
-  $("headerPatient").textContent = patient; $("railPatient").textContent = patient;
-  $("studyTitle").textContent = state.study.description || "Imported study";
+  $("seriesControl").style.display = "flex";
   const series = state.volume || state.study.series?.[0];
   $("seriesTitle").textContent = series ? `${series.series_description || series.modality || state.study.modality || "DICOM"} · ${series.frame_count || series.instance_count || state.study.image_count || 0}` : `${state.study.modality || "DICOM"} source`;
-  $("modelCrumb").textContent = state.model ? `PatientModel v${state.model.version || 1}` : "Uncompiled";
-  const sourceLine = `${state.study.modality || "DICOM"} · ${state.study.study_date || "date not supplied"} · ${state.study.image_count || 0} instances`;
-  $("studySubtitle").textContent = state.model ? `PatientModel ${state.model.version || 1} · ${sourceLine}` : `${sourceLine} · indexed locally; compile to create the model`;
 }
 
 function renderMetrics() {
   const model = state.model;
-  $("metricObjects").textContent = model ? number(model.objects?.length || 0, 0) : "—";
-  $("metricRelationships").textContent = model ? number(model.relationships?.length || 0, 0) : "—";
-  $("metricSources").textContent = model ? number(model.sources?.length || 0, 0) : "—";
-  $("metricState").textContent = model ? "Ready" : state.study ? (state.study.status === "compiling" ? "Compiling" : "Indexed") : "Waiting";
-  $("metricStateDetail").textContent = model ? "Model ready" : state.study ? (state.study.status === "compiling" ? "Compiling" : "Source volume available") : "";
+  const metrics = {
+    metricObjects: model ? number(model.objects?.length || 0, 0) : "—",
+    metricRelationships: model ? number(model.relationships?.length || 0, 0) : "—",
+    metricSources: model ? number(model.sources?.length || 0, 0) : "—",
+    metricState: model ? "Ready" : state.study ? (state.study.status === "compiling" ? "Compiling" : "Indexed") : "Waiting",
+    metricStateDetail: model ? "Model ready" : state.study ? (state.study.status === "compiling" ? "Compiling" : "Source volume available") : "",
+  };
+  Object.entries(metrics).forEach(([id, value]) => { const element = $(id); if (element) element.textContent = value; });
   $("contextImport").style.display = model ? "" : "none";
   $("exportButton").style.display = model ? "" : "none";
   $("exportButton").disabled = !model;
   $("historyButton").style.display = model ? "" : "none";
-  $("linkedState").style.display = model ? "flex" : "none";
-  $("linkedState").classList.toggle("ready", Boolean(model));
-  $("linkedState").innerHTML = model ? `<i></i>${objects().length} objects` : "";
 }
 
 function renderCapabilities() {
@@ -219,6 +303,18 @@ function project(point, cam) { const q = [point[0] - cam.c[0], point[1] - cam.c[
 function unproject(point, cam, anchor) { const X = (point.x - cam.width / 2 - cam.panX) / cam.s; const Y = (cam.height / 2 + cam.panY - point.y) / cam.s; const Z = anchor ? dot3(cam.T, [anchor[0] - cam.c[0], anchor[1] - cam.c[1], anchor[2] - cam.c[2]]) : 0; return [0, 1, 2].map((i) => cam.c[i] + X * cam.R[i] + Y * cam.U[i] + Z * cam.T[i]); }
 function camMatrices(cam) { const rows = [cam.R.map((v) => v * cam.s / (cam.width / 2)), cam.U.map((v) => v * cam.s / (cam.height / 2)), cam.T.map((v) => -v / (.55 * cam.D))]; const t = rows.map((row) => -dot3(row, cam.c)); t[0] += cam.panX / (cam.width / 2); t[1] -= cam.panY / (cam.height / 2); return { mat: new Float32Array([rows[0][0], rows[1][0], rows[2][0], 0, rows[0][1], rows[1][1], rows[2][1], 0, rows[0][2], rows[1][2], rows[2][2], 0, t[0], t[1], t[2], 1]), view: new Float32Array([cam.R[0], cam.U[0], cam.T[0], cam.R[1], cam.U[1], cam.T[1], cam.R[2], cam.U[2], cam.T[2]]) }; }
 function boxCorners(object) { const box = boxOf(object); return [0, 1, 2, 3, 4, 5, 6, 7].map((n) => [n & 1 ? box.max[0] : box.min[0], n & 2 ? box.max[1] : box.min[1], n & 4 ? box.max[2] : box.min[2]]); }
+function boundsCorners(bounds) { return [0, 1, 2, 3, 4, 5, 6, 7].map((n) => [n & 1 ? bounds.max[0] : bounds.min[0], n & 2 ? bounds.max[1] : bounds.min[1], n & 4 ? bounds.max[2] : bounds.min[2]]); }
+// Fit the complete projected bounds, rather than assuming the 3D diagonal will
+// fit in the square tile. Rotation can make either screen axis wider than that
+// diagonal-based estimate, which otherwise cuts anatomy at the tile edge.
+function camForFit(bounds, width, height, yaw, pitch, zoom = 1, panX = 0, panY = 0, padding = .84) {
+  const reference = camFor(bounds, width, height, yaw, pitch, 1, panX, panY);
+  const projected = boundsCorners(bounds).map((corner) => project(corner, reference));
+  const extentX = Math.max(...projected.map((point) => point[0])) - Math.min(...projected.map((point) => point[0]));
+  const extentY = Math.max(...projected.map((point) => point[1])) - Math.min(...projected.map((point) => point[1]));
+  const fitZoom = Math.min(1, (width * padding) / Math.max(1, extentX), (height * padding) / Math.max(1, extentY));
+  return camFor(bounds, width, height, yaw, pitch, zoom * fitZoom, panX, panY);
+}
 function projectSize(object, cam) { const points = boxCorners(object).map((corner) => project(corner, cam)); const xs = points.map((p) => p[0]); const ys = points.map((p) => p[1]); return [Math.max(8, Math.max(...xs) - Math.min(...xs)), Math.max(8, Math.max(...ys) - Math.min(...ys))]; }
 // Display-only tint so neighbouring structures read apart; object type colours still drive lists and glyphs.
 const MESH_TINTS = [[/nodule|lesion|tumou?r|mass/i, "#e8b04a"], [/brain|cerebell|cortex|cerebr/i, "#d7a7a9"], [/lung/i, "#7cc6bb"], [/heart|atri|ventric/i, "#d98d8d"], [/aort|arter/i, "#d5645c"], [/vein|cava/i, "#6f8fd0"], [/trache|bronch|airway/i, "#8db6e6"], [/spine|vertebra|rib|stern|bone/i, "#d9d2bb"]];
@@ -233,7 +329,7 @@ function modelIdFor(item) { if (state.priorModel?.objects?.includes(item)) retur
 // Composites the WebGL meshes for temporal plan entries into a 2D canvas. The selection paints last so it reads through its neighbours.
 function meshLayer(ctx, cam, entries, offsetX = 0, offsetY = 0) { const drawn = new Set(); if (!window.MeshView?.ok) return drawn; const items = []; entries.forEach((entry) => { const item = entry.item; const modelId = modelIdFor(item); if (item.type === "volume" || !modelId || !MeshView.ensure(modelId, item)) return; drawn.add(entry); const selected = item.id === state.selectedId && !entry.ghost; items.push({ key: MeshView.key(modelId, item.id), color: hexRgb(entryColor(entry, meshColor)), alpha: entry.ghost ? .2 : meshAlpha(item), depth: selected || isHighlighted(item) ? Infinity : project(centroidOf(item), cam)[2] }); }); if (items.length && MeshView.draw({ width: cam.width, height: cam.height, dpr: window.devicePixelRatio || 1, viewports: [{ x: 0, y: 0, w: cam.width, h: cam.height, ...camMatrices(cam) }], items })) ctx.drawImage(MeshView.canvas, offsetX, offsetY, cam.width, cam.height); return drawn; }
 let drawQueued = false;
-function requestDraw() { if (drawQueued) return; drawQueued = true; requestAnimationFrame(() => { drawQueued = false; drawAll(); }); }
+function requestDraw() { broadcastHologramSync(); if (drawQueued) return; drawQueued = true; requestAnimationFrame(() => { drawQueued = false; drawAll(); }); }
 if (window.MeshView) MeshView.onReady = requestDraw;
 
 function temporalRenderPlan() {
@@ -274,7 +370,7 @@ function updateSceneControls() {
   $("sceneIsolate")?.setAttribute("aria-pressed", state.isolate ? "true" : "false");
 }
 
-function fitScene() { state.sceneZoom = 1; state.scenePanX = 0; state.scenePanY = 0; drawAll(); }
+function fitScene() { state.sceneZoom = 1; state.scenePanX = 0; state.scenePanY = 0; broadcastHologramSync(); drawAll(); }
 
 function zoomScene(factor, anchor = null) {
   const canvas = $("sceneCanvas");
@@ -288,6 +384,7 @@ function zoomScene(factor, anchor = null) {
     state.scenePanY = anchor.y - centerY - ratio * (anchor.y - centerY - state.scenePanY);
   }
   state.sceneZoom = next;
+  broadcastHologramSync();
   drawAll();
 }
 
@@ -315,7 +412,7 @@ function drawSceneOn(canvas, compact = false) {
   return { bounds, width, height, cam };
 }
 function updateOrientation(cam) { const widget = $("orientWidget"); if (!widget || !cam) return; const axes = { L: [1, 0, 0], R: [-1, 0, 0], P: [0, 1, 0], A: [0, -1, 0], S: [0, 0, 1], I: [0, 0, -1] }; widget.querySelectorAll("[data-axis]").forEach((label) => { const axis = axes[label.dataset.axis]; const x = dot3(cam.R, axis), y = dot3(cam.U, axis), toward = dot3(cam.T, axis); label.style.left = `${24 + 20 * x}px`; label.style.top = `${24 - 20 * y}px`; label.style.opacity = Math.hypot(x, y) < .25 ? 0 : .35 + .65 * (.5 + .5 * toward); }); const bar = document.querySelector(".model-scale"); if (bar) { const length = [100, 50, 20, 10, 5].find((mm) => mm * cam.s <= 120) || 5; bar.querySelector("span").style.width = `${Math.round(length * cam.s)}px`; bar.querySelector("b").textContent = `${length} mm`; } }
-function drawScene() { const result = drawSceneOn($("sceneCanvas")); updateOrientation(result?.cam); const total = objects().filter((item) => geometryOf(item)).length; const shown = scenePlan().length; const preset = anatomyPreset(); $("sceneCount").textContent = total ? `${shown} shown · ${total} objects` : "No geometry loaded"; $("sceneSummary").textContent = preset && state.scenePreset === preset.id && !state.isolate ? `${preset.label} · segmented anatomy` : currentObject()?.label || "Select an object to inspect it"; updateSceneControls(); return result; }
+function drawScene() { const result = drawSceneOn($("sceneCanvas")); updateOrientation(result?.cam); const preset = anatomyPreset(); $("sceneSummary").textContent = preset && state.scenePreset === preset.id && !state.isolate ? `${preset.label} · segmented anatomy` : currentObject()?.label || "Select an object to inspect it"; updateSceneControls(); return result; }
 
 function drawProcedure() { const canvas = $("procedureCanvas"); if (!canvas) return; drawSceneOn(canvas, true); }
 // Glass alphas tuned for the light workspace wash out on black, so lift them without flattening the selection contrast.
@@ -334,7 +431,7 @@ function drawHologram() {
     { x: centerX - radius, y: centerY, rotation: -Math.PI / 2, yaw: state.holoYaw + Math.PI * 1.5 },
   ];
   views.forEach((view) => {
-    const cam = camFor(bounds, tile, tile, view.yaw, state.holoPitch, 1.28, 0, 0);
+    const cam = camForFit(bounds, tile, tile, view.yaw, state.holoPitch, 1, 0, 0);
     // Each part keeps its own tint so the hologram reads as distinct anatomy, not one blue blob.
     const items = []; const fallback = [];
     available.forEach((entry) => {
@@ -379,9 +476,9 @@ function updateHologramControls() {
 }
 function setHoloSpin(spinning) { state.holoSpin = spinning; updateHologramControls(); if (spinning) startHoloSpin(); else { stopHoloSpin(); drawHologram(); } }
 let holoDrawQueued = false;
-function requestHoloDraw() { if (holoDrawQueued) return; holoDrawQueued = true; requestAnimationFrame(() => { holoDrawQueued = false; drawHologram(); }); }
+function requestHoloDraw() { broadcastHologramSync(); if (holoDrawQueued) return; holoDrawQueued = true; requestAnimationFrame(() => { holoDrawQueued = false; drawHologram(); }); }
 function zoomHologram(factor) { state.holoZoom = clamp(state.holoZoom * factor, HOLO_ZOOM_RANGE[0], HOLO_ZOOM_RANGE[1]); requestHoloDraw(); }
-function resetHologramView() { state.holoYaw = 0; state.holoPitch = CAM_DEFAULT.pitch; state.holoZoom = 1; state.holoPanX = 0; state.holoPanY = 0; requestHoloDraw(); }
+function resetHologramView() { state.holoYaw = 0; state.holoPitch = CAM_DEFAULT.pitch; state.holoZoom = 1; state.holoPanX = 0; state.holoPanY = 0; broadcastHologramSync(); requestHoloDraw(); }
 
 // --- Hold-to-talk ---------------------------------------------------------------
 // Hold space (or hold the button) to record; release to send. The clip is transcribed by
@@ -455,15 +552,401 @@ function applyVoiceCommand(result) {
   else if (result?.targets?.length) { state.highlights = result.targets; toast(`Highlighted ${result.summary}`); }
   else { state.highlights = []; toast(`Heard “${state.voiceTranscript}” · no matching structure`); }
   setVoiceState("idle");
-  drawAll(); renderInspector(); renderRailObjects();
+  drawAll(); renderInspector(); renderRailObjects(); broadcastHologramSync();
 }
+
+// --- Camera gestures -----------------------------------------------------------
+// Gestures stay local to the browser. The optional tracker supplies normalized hand
+// landmarks; this layer turns them into the same camera state used by mouse controls.
+const GESTURE_MODES = ["model", "slices", "timeline", "context", "procedure", "hologram"];
+const GESTURE_MODE_LABELS = { model: "Model", slices: "Review", timeline: "Change", context: "Context", procedure: "Procedure", hologram: "Hologram" };
+const GESTURE_POSES = { pinch: "Pinch + move · rotate", point: "Point + hold · select", peace: "Peace sign · anatomy", open: "Open palm · hold to speak", fist: "Closed fist · fit view", tracking: "Hand seen · try a gesture", none: "Show one hand inside the frame" };
+
+function updateGesturePreviewControl() {
+  const console = $("gestureConsole");
+  const button = $("gesturePreviewToggle");
+  if (!console || !button) return;
+  console.classList.toggle("preview-hidden", !state.gesturePreviewVisible);
+  button.textContent = state.gesturePreviewVisible ? "Hide preview" : "Show preview";
+  button.setAttribute("aria-pressed", state.gesturePreviewVisible ? "true" : "false");
+  button.setAttribute("aria-label", state.gesturePreviewVisible ? "Hide camera preview" : "Show camera preview");
+}
+
+function toggleGesturePreview() {
+  state.gesturePreviewVisible = !state.gesturePreviewVisible;
+  localStorage.setItem("phasemed-gesture-preview", state.gesturePreviewVisible ? "visible" : "hidden");
+  updateGesturePreviewControl();
+}
+
+function gestureScanPreviewUrl() {
+  const study = state.viewerStudy || state.study;
+  const series = state.volume?.series_instance_uid;
+  if (!study?.id || !series || !state.volume?.renderable) return "";
+  return `/api/studies/${encodeURIComponent(study.id)}/series/${encodeURIComponent(series)}/mpr?plane=axial&index=${encodeURIComponent(state.slice)}&window_center=${encodeURIComponent(state.windowCenter)}&window_width=${encodeURIComponent(state.windowWidth)}&v=${Date.now()}`;
+}
+
+function updateGestureScanPreview() {
+  const panel = $("gestureScanPreview");
+  const image = $("gestureScanImage");
+  if (!panel || !image) return;
+  const active = Boolean(state.gestureScanPreview && state.volume?.renderable);
+  panel.classList.toggle("hidden", !active);
+  if (!active) return;
+  const url = gestureScanPreviewUrl();
+  if (url && url !== state.gestureScanUrl) {
+    state.gestureScanUrl = url;
+    image.src = url;
+  }
+  const count = Math.max(1, Number(state.volume?.frame_count || state.volume?.shape?.[0] || 1));
+  $("gestureScanSlice").textContent = `Slice ${Math.min(count, state.slice + 1)} / ${count}`;
+}
+
+function broadcastGestureScanState() {
+  if (!hologramChannel) return;
+  hologramChannel.postMessage({ type: "scan-preview", studyId: state.study?.id || "", slice: state.slice, active: state.gestureScanPreview });
+}
+
+function applyGestureScanState(message) {
+  if (!message || (message.studyId && state.study?.id && message.studyId !== state.study.id)) return;
+  state.slice = Math.max(0, Number(message.slice) || 0);
+  state.gestureScanPreview = Boolean(message.active);
+  updateGestureScanPreview();
+  if (state.volume) refreshSlices(["axial"]);
+}
+
+function ensureHologramVolume(study) {
+  if (!isHologramDisplay || !study?.id || state.volume?.study_id === study.id) return;
+  loadVolume(study).then(updateGestureScanPreview).catch(() => {});
+}
+
+function closeGestureScanPreview() {
+  state.gestureScanPreview = false;
+  state.gestureSliceDrag = null;
+  updateGestureScanPreview();
+  broadcastGestureScanState();
+}
+
+function updateGestureControls(kind = "off", message = "Camera off") {
+  const console = $("gestureConsole");
+  if (!console) return;
+  ["off", "requesting", "loading", "ready", "error"].forEach((name) => console.classList.toggle(name, name === kind));
+  $("gestureStatus").textContent = message;
+  $("gestureButton")?.classList.toggle("active", ["requesting", "loading", "ready"].includes(kind));
+  $("hologramGesture")?.classList.toggle("active", ["requesting", "loading", "ready"].includes(kind));
+  const enable = $("gestureEnable");
+  if (enable) enable.textContent = kind === "error" ? "Try again" : kind === "ready" ? "Camera active" : "Enable camera";
+  updateGesturePreviewControl();
+}
+
+function gestureStatus(kind, message) {
+  updateGestureControls(kind, message);
+  if (kind === "ready") {
+    $("gestureAction").textContent = "Show one hand inside the frame";
+    $("gestureHands").textContent = "0 hands";
+  }
+}
+
+function showGestureConsole() { $("gestureConsole")?.classList.remove("hidden"); }
+
+function stopGestureMomentum() {
+  if (state.gestureMomentumRaf) cancelAnimationFrame(state.gestureMomentumRaf);
+  state.gestureMomentumRaf = null;
+}
+
+function startGestureMomentum(yawVelocity, pitchVelocity = 0) {
+  if (!["model", "hologram"].includes(state.mode)) return;
+  let activeYaw = clamp(Number(yawVelocity) || 0, -6, 6);
+  let activePitch = clamp(Number(pitchVelocity) || 0, -3, 3);
+  if (Math.hypot(activeYaw, activePitch) < .35) return;
+  stopGestureMomentum();
+  let last = performance.now();
+  const tick = (now) => {
+    const delta = Math.min(.05, Math.max(.001, (now - last) / 1000));
+    last = now;
+    if (state.mode === "hologram") {
+      state.holoYaw += activeYaw * delta;
+      state.holoPitch = clamp(state.holoPitch + activePitch * delta, -Math.PI / 2, Math.PI / 2);
+      requestHoloDraw();
+    } else {
+      state.sceneYaw += activeYaw * delta;
+      state.scenePitch = clamp(state.scenePitch + activePitch * delta, -Math.PI / 2, Math.PI / 2);
+      requestDraw();
+    }
+    const decay = Math.exp(-3.3 * delta);
+    activeYaw *= decay;
+    activePitch *= decay;
+    if (Math.hypot(activeYaw, activePitch) < .08) { state.gestureMomentumRaf = null; return; }
+    state.gestureMomentumRaf = requestAnimationFrame(tick);
+  };
+  state.gestureMomentumRaf = requestAnimationFrame(tick);
+}
+
+function stopGestureVoice() {
+  state.gestureVoiceSince = 0;
+  state.gestureVoiceAnchor = null;
+  if (!state.gestureVoiceActive) return;
+  state.gestureVoiceActive = false;
+  stopVoiceCapture();
+}
+
+function resetGestureContact({ stopMomentum = true } = {}) {
+  state.gesturePinch = null;
+  state.gestureSpan = null;
+  state.gestureSwipe = null;
+  state.gesturePoint = null;
+  state.gestureFistSince = 0;
+  state.gestureHandCount = 0;
+  state.gestureSliceDrag = null;
+  if (stopMomentum) stopGestureMomentum();
+  stopGestureVoice();
+}
+
+function resetGestureState() {
+  state.gestureFrame = null;
+  state.gestureActionAt = 0;
+  state.gesturePose = "off";
+  resetGestureContact();
+  if ($("gestureHands")) $("gestureHands").textContent = "0 hands";
+  if ($("gestureAction")) $("gestureAction").textContent = "Enable camera to control the workspace";
+}
+
+function stopGestureCamera(hide = false) {
+  state.gestureCamera?.stop();
+  state.gestureCamera = null;
+  resetGestureState();
+  updateGestureControls("off", "Camera off");
+  if (hide) $("gestureConsole")?.classList.add("hidden");
+}
+
+function startGestureCamera() {
+  if (state.gestureCamera?.running || state.gestureCamera?.loading) return;
+  if (!window.GestureCamera) { showGestureConsole(); updateGestureControls("error", "Gesture tracker unavailable"); toast("Gesture tracker could not load"); return; }
+  showGestureConsole();
+  const camera = new window.GestureCamera({ video: $("gestureVideo"), overlay: $("gestureOverlay"), onStatus: gestureStatus, onFrame: handleGestureFrame });
+  state.gestureCamera = camera;
+  camera.start().catch((error) => {
+    if (state.gestureCamera === camera) state.gestureCamera = null;
+    resetGestureState();
+    updateGestureControls("error", error.message || "Camera could not start");
+    toast(`Gesture camera unavailable · ${error.message}`);
+  });
+}
+
+function startGestureCameraForModel() {
+  if (!isHologramDisplay || !state.model) return;
+  startGestureCamera();
+}
+
+function toggleGestureCamera() {
+  if (state.gestureCamera?.running || state.gestureCamera?.loading) stopGestureCamera(false);
+  else startGestureCamera();
+}
+
+function gestureZoom(factor) {
+  if (state.mode === "hologram") { if (state.holoSpin) setHoloSpin(false); state.holoZoom = clamp(state.holoZoom * factor, HOLO_ZOOM_RANGE[0], HOLO_ZOOM_RANGE[1]); requestHoloDraw(); }
+  else if (state.mode === "model") { state.sceneZoom = clamp(state.sceneZoom * factor, .18, 8); requestDraw(); }
+}
+
+function gestureTargetAt(hand) {
+  if (state.mode !== "model") return null;
+  const canvas = $("sceneCanvas");
+  if (!canvas) return null;
+  return hitTest({ x: hand.screen.x * canvas.clientWidth, y: hand.screen.y * canvas.clientHeight }, canvas);
+}
+
+function gestureRotate(hand, allowSelect = false) {
+  const now = performance.now();
+  if (!state.gesturePinch) {
+    stopGestureMomentum();
+    state.gesturePinch = { x: hand.center.x, y: hand.center.y, lastX: hand.center.x, lastY: hand.center.y, lastAt: now, yaw: state.mode === "hologram" ? state.holoYaw : state.sceneYaw, pitch: state.mode === "hologram" ? state.holoPitch : state.scenePitch, yawVelocity: 0, pitchVelocity: 0, moved: false, selectTargetId: allowSelect ? gestureTargetAt(hand)?.id || "" : "" };
+    if (state.mode === "hologram") setHoloSpin(false);
+  }
+  const elapsed = Math.max(.016, (now - state.gesturePinch.lastAt) / 1000);
+  const frameDx = hand.center.x - state.gesturePinch.lastX;
+  const frameDy = hand.center.y - state.gesturePinch.lastY;
+  state.gesturePinch.yawVelocity = state.gesturePinch.yawVelocity * .65 + (frameDx / elapsed) * 3.2 * .35;
+  state.gesturePinch.pitchVelocity = state.gesturePinch.pitchVelocity * .65 + (frameDy / elapsed) * 2.7 * .35;
+  state.gesturePinch.lastX = hand.center.x;
+  state.gesturePinch.lastY = hand.center.y;
+  state.gesturePinch.lastAt = now;
+  const dx = hand.center.x - state.gesturePinch.x;
+  const dy = hand.center.y - state.gesturePinch.y;
+  state.gesturePinch.moved ||= Math.hypot(dx, dy) > .045;
+  if (state.mode === "hologram") { state.holoYaw = state.gesturePinch.yaw + dx * 3.2; state.holoPitch = clamp(state.gesturePinch.pitch + dy * 2.7, -Math.PI / 2, Math.PI / 2); requestHoloDraw(); }
+  else if (state.mode === "model") { state.sceneYaw = state.gesturePinch.yaw + dx * 3.2; state.scenePitch = clamp(state.gesturePinch.pitch + dy * 2.7, -Math.PI / 2, Math.PI / 2); requestDraw(); }
+}
+
+function endGestureOrbit(hand = null, cancel = false) {
+  const orbit = state.gesturePinch;
+  if (!orbit) return;
+  if (cancel) { state.gesturePinch = null; return; }
+  if (!orbit.moved && orbit.selectTargetId && (!hand || gestureTargetAt(hand)?.id === orbit.selectTargetId)) {
+    state.gestureActionAt = performance.now();
+    selectObject(orbit.selectTargetId);
+  } else {
+    startGestureMomentum(orbit.yawVelocity, orbit.pitchVelocity);
+  }
+  state.gesturePinch = null;
+}
+
+function gestureModeSwipe(direction) {
+  const index = GESTURE_MODES.indexOf(state.mode);
+  const next = (index + (direction < 0 ? 1 : -1) + GESTURE_MODES.length) % GESTURE_MODES.length;
+  setMode(GESTURE_MODES[next]);
+  toast(`${GESTURE_MODE_LABELS[GESTURE_MODES[next]]} view`);
+}
+
+function gestureSliceStep(delta) {
+  const count = Math.max(1, Number(state.volume?.frame_count || state.volume?.shape?.[0] || 1));
+  const next = clamp(state.slice + delta, 0, count - 1);
+  if (next === state.slice) return;
+  state.slice = next;
+  state.gestureScanPreview = true;
+  const input = $("sliceInput");
+  if (input) input.value = String(next);
+  updateGestureScanPreview();
+  if (state.volume) refreshSlices(["axial"]);
+  broadcastGestureScanState();
+}
+
+function handleTwoFistSliceGesture(hands, now) {
+  const centerY = hands.slice(0, 2).reduce((sum, hand) => sum + hand.center.y, 0) / 2;
+  if (!state.gestureSliceDrag) {
+    state.gestureSliceDrag = { y: centerY, at: now };
+    state.gestureScanPreview = true;
+    state.gestureScanUrl = "";
+    updateGestureScanPreview();
+    broadcastGestureScanState();
+    return;
+  }
+  const delta = centerY - state.gestureSliceDrag.y;
+  const stepSize = .026;
+  const steps = Math.trunc(delta / stepSize);
+  if (!steps) return;
+  state.gestureSliceDrag.y += steps * stepSize;
+  gestureSliceStep(steps);
+}
+
+function gesturePointAction(hand) {
+  const canvas = state.mode === "procedure" ? $("procedureCanvas") : state.mode === "model" ? $("sceneCanvas") : null;
+  if (!canvas) return;
+  const point = { x: hand.screen.x * canvas.clientWidth, y: hand.screen.y * canvas.clientHeight };
+  const target = state.mode === "model" ? hitTest(point, canvas) : null;
+  const id = target?.id || "";
+  if (!state.gesturePoint || state.gesturePoint.id !== id) state.gesturePoint = { id, since: performance.now() };
+  if (!id || performance.now() - state.gesturePoint.since < 360 || performance.now() - state.gestureActionAt < 700) return;
+  state.gestureActionAt = performance.now();
+  if (state.mode === "model") selectObject(id);
+  else if (state.mode === "procedure" && state.pathMode) { point.world = mapWorld(point, canvas); state.pathPoints.push(point); if (state.pathPoints.length === 2) finishPath(state.pathPoints[0], state.pathPoints[1], canvas); drawAll(); }
+}
+
+function updateGestureVoice(primary, now, blocked = false) {
+  const listeningPose = Boolean(primary?.open && !blocked);
+  if (!listeningPose) {
+    stopGestureVoice();
+    return false;
+  }
+  if (!state.gestureVoiceSince) {
+    state.gestureVoiceSince = now;
+    state.gestureVoiceAnchor = { x: primary.center.x, y: primary.center.y };
+  } else if (!state.gestureVoiceActive && state.gestureVoiceAnchor && Math.hypot(primary.center.x - state.gestureVoiceAnchor.x, primary.center.y - state.gestureVoiceAnchor.y) > .12) {
+    state.gestureVoiceSince = now;
+    state.gestureVoiceAnchor = { x: primary.center.x, y: primary.center.y };
+    return false;
+  }
+  if (!state.gestureVoiceActive && state.voiceState === "idle" && now - state.gestureVoiceSince > 650) {
+    state.gestureVoiceActive = true;
+    startVoiceCapture();
+  }
+  return state.gestureVoiceActive;
+}
+
+function handleGestureFrame(frame) {
+  state.gestureFrame = frame;
+  const hands = frame.hands || [];
+  const primary = hands[0];
+  $("gestureHands").textContent = `${hands.length} hand${hands.length === 1 ? "" : "s"}`;
+  $("gestureAction").textContent = GESTURE_POSES[primary?.gesture || "none"];
+  if (!hands.length) {
+    endGestureOrbit(null, true);
+    resetGestureContact({ stopMomentum: false });
+    state.gestureActionAt = performance.now();
+    state.gesturePose = "none";
+    $("gestureAction").textContent = GESTURE_POSES.none;
+    return;
+  }
+
+  const now = performance.now();
+  if (state.gestureHandCount !== hands.length) {
+    endGestureOrbit(null, true);
+    resetGestureContact();
+    state.gestureActionAt = now;
+    state.gestureHandCount = hands.length;
+  }
+  const twoFistSlice = hands.length >= 2 && hands.slice(0, 2).every((hand) => hand.fist);
+  if (twoFistSlice) {
+    endGestureOrbit();
+    stopGestureVoice();
+    state.gestureSpan = null;
+    state.gesturePoint = null;
+    state.gestureSwipe = null;
+    state.gestureFistSince = 0;
+    $("gestureAction").textContent = "Two fists · drag down / up through scans";
+    handleTwoFistSliceGesture(hands, now);
+    state.gesturePose = "fist";
+    return;
+  }
+  state.gestureSliceDrag = null;
+  const twoHandZoom = hands.length >= 2 && hands.slice(0, 2).every((hand) => hand.pinch);
+  const twoOpenHands = hands.length >= 2 && hands.slice(0, 2).every((hand) => hand.open);
+  const listening = updateGestureVoice(primary, now, twoHandZoom || twoOpenHands);
+  if (twoOpenHands) {
+    $("gestureAction").textContent = "Two open hands · keep still or use two pinches";
+    state.gesturePinch = null;
+    state.gestureSpan = null;
+  } else if (twoHandZoom) {
+    $("gestureAction").textContent = "Two pinches · move apart / together to zoom";
+    state.gesturePinch = null;
+    const span = Math.hypot(hands[0].center.x - hands[1].center.x, hands[0].center.y - hands[1].center.y);
+    if (state.gestureSpan != null && Math.abs(span - state.gestureSpan) > .006) gestureZoom(clamp(1 + (span - state.gestureSpan) * 2.8, .93, 1.07));
+    state.gestureSpan = span;
+  } else state.gestureSpan = null;
+
+  const orbiting = !twoHandZoom && !twoOpenHands && !listening && primary.pinch;
+  if (orbiting) gestureRotate(primary, primary.pinch);
+  else if (!primary.pinch || listening) endGestureOrbit(primary);
+
+  if (listening) {
+    state.gesturePose = primary.gesture;
+    $("gestureAction").textContent = state.voiceState === "recording" ? "Listening · close palm to send" : "Preparing microphone…";
+    return;
+  }
+
+  if (primary.point) gesturePointAction(primary);
+  else state.gesturePoint = null;
+
+  if (!twoHandZoom && primary.peace) {
+    if (!state.gestureSwipe) state.gestureSwipe = { x: primary.center.x, y: primary.center.y, at: now };
+    const dx = primary.center.x - state.gestureSwipe.x;
+    const dy = primary.center.y - state.gestureSwipe.y;
+    if (now - state.gestureSwipe.at < 760 && Math.abs(dx) > .22 && Math.abs(dx) > Math.abs(dy) * 1.25 && now - state.gestureActionAt > 900) { state.gestureActionAt = now; gestureModeSwipe(dx); state.gestureSwipe = null; }
+    else if (now - state.gestureSwipe.at < 760 && primary.peace && Math.abs(dy) > .2 && Math.abs(dy) > Math.abs(dx) * 1.25 && now - state.gestureActionAt > 900) { state.gestureActionAt = now; cycleAnatomyGroup(dy < 0 ? 1 : -1); drawAll(); toast("Anatomy filter changed"); state.gestureSwipe = null; }
+    else if (now - state.gestureSwipe.at >= 760) state.gestureSwipe = { x: primary.center.x, y: primary.center.y, at: now };
+  } else state.gestureSwipe = null;
+
+  if (primary.peace && state.gesturePose !== "peace" && now - state.gestureActionAt > 900) { state.gestureActionAt = now; cycleAnatomyGroup(1); drawAll(); toast("Anatomy filter changed"); }
+  if (primary.fist) { if (!state.gestureFistSince) state.gestureFistSince = now; if (now - state.gestureFistSince > 900 && now - state.gestureActionAt > 1400) { state.gestureActionAt = now; if (state.mode === "hologram") resetHologramView(); else fitScene(); toast("View fitted"); } }
+  else state.gestureFistSince = 0;
+  state.gesturePose = primary.gesture;
+}
+
 function drawAll() { if (state.model && state.mode === "model") drawScene(); if (state.model && state.mode === "slices") drawSceneOn($("mprModelCanvas"), true); if (state.model && state.mode === "procedure") drawProcedure(); if (state.model && state.mode === "hologram") drawHologram(); }
 
 function mapWorld(point, canvas) { if (point.world) return point.world; const visible = scenePlan().map((entry) => entry.item); const cam = camFor(sceneBounds(visible), Math.max(1, canvas.clientWidth), Math.max(1, canvas.clientHeight)); const selected = currentObject(); return unproject(point, cam, selected?.geometry ? centroidOf(selected) : null); }
 function pointFromEvent(event, canvas) { const rect = canvas.getBoundingClientRect(); return { x: event.clientX - rect.left, y: event.clientY - rect.top }; }
 function hitTest(point, canvas) { const all = scenePlan().map((entry) => entry.item); const cam = camFor(sceneBounds(all), Math.max(1, canvas.clientWidth), Math.max(1, canvas.clientHeight)); let hit = null; let best = Infinity; all.forEach((item) => { if (item.type === "volume") return; const projected = project(centroidOf(item), cam); const size = projectSize(item, cam); const radius = Math.max(20, size[0] * .5, size[1] * .5); const distance = Math.hypot(point.x - projected[0], point.y - projected[1]); const score = distance / radius; if (distance < radius && score < best) { best = score; hit = item; } }); return hit; }
 
-async function selectObject(id) { if (!objects().some((item) => item.id === id)) return; state.selectedId = id; state.isolate = false; state.pathPoints = []; const object = currentObject(); const group = activeAnatomyGroup(); if (group && !group.matches(object)) state.scenePreset = "all"; if (object?.geometry && state.volume?.instances?.length) { const targetZ = object.geometry.centroid[2]; let nearestIndex = 0; let nearestDelta = Infinity; state.volume.instances.forEach((instance, index) => { const delta = Math.abs(Number(instance.z || index) - targetZ); if (delta < nearestDelta) { nearestDelta = delta; nearestIndex = index; } }); state.slice = nearestIndex; $("sliceInput").value = String(nearestIndex); await refreshSlices(); } renderInspector(); renderRailObjects(); renderAnalysisPanels(); drawAll(); updateCrosshair(); toast(`${currentObject().label} selected · linked views updated`); }
+async function selectObject(id) { if (!objects().some((item) => item.id === id)) return; state.selectedId = id; state.isolate = false; state.pathPoints = []; const object = currentObject(); const group = activeAnatomyGroup(); if (group && !group.matches(object)) state.scenePreset = "all"; if (object?.geometry && state.volume?.instances?.length) { const targetZ = object.geometry.centroid[2]; let nearestIndex = 0; let nearestDelta = Infinity; state.volume.instances.forEach((instance, index) => { const delta = Math.abs(Number(instance.z || index) - targetZ); if (delta < nearestDelta) { nearestDelta = delta; nearestIndex = index; } }); state.slice = nearestIndex; $("sliceInput").value = String(nearestIndex); await refreshSlices(); } renderInspector(); renderRailObjects(); renderAnalysisPanels(); drawAll(); updateCrosshair(); broadcastHologramSync(); toast(`${currentObject().label} selected · linked views updated`); }
 
 async function openSeriesChooser() {
   if (!state.study) { toast("Open a study first"); return; }
@@ -482,7 +965,7 @@ function selectImageObject(event, plane) { if (!state.model || !state.volume?.sh
 
 async function loadVolume(study, seriesUid = null) { state.viewerStudy = study || null; state.volume = null; ["axialImage", "coronalImage", "sagittalImage"].forEach((id) => { $(id).removeAttribute("src"); }); if (!study) return; try { const query = seriesUid ? `?series_uid=${encodeURIComponent(seriesUid)}` : ""; const volume = await api(`/api/studies/${encodeURIComponent(study.id)}/volume${query}`); state.volume = volume; if (seriesUid) state.slice = 0; if (!volume.renderable) { $("sliceMeta").textContent = "Series pixels not renderable"; return; } if (String(volume.modality || "").toUpperCase() === "CT") { state.windowCenter = 40; state.windowWidth = 400; $("windowCenterInput").value = "40"; $("windowWidthInput").value = "400"; } const count = Math.max(1, volume.frame_count || volume.shape?.[0] || 1); $("sliceInput").max = String(count - 1); state.slice = clamp(state.slice, 0, count - 1); $("sliceInput").value = String(state.slice); await refreshSlices(); } catch (error) { $("sliceMeta").textContent = "No renderable series"; throw error; } }
 function updateSliceReadout() { const position = `${state.slice + 1} / ${state.volume?.shape?.[0] || 1}`; $("sliceOutput").textContent = position; $("axialCaption").textContent = `slice ${state.slice + 1}`; $("coronalCaption").textContent = `linked slice ${state.slice + 1}`; $("sagittalCaption").textContent = `linked slice ${state.slice + 1}`; $("axialWl").textContent = `W:${number(state.windowWidth, 0)} / L:${number(state.windowCenter, 0)}`; $("windowCenterOutput").textContent = `${number(state.windowCenter, 0)} HU`; $("windowWidthOutput").textContent = `${number(state.windowWidth, 0)} HU`; updateCrosshair(); }
-async function refreshSlices(planes = ["axial", "coronal", "sagittal"]) { if (!state.volume?.renderable || !(state.viewerStudy || state.study)) return; const series = encodeURIComponent(state.volume.series_instance_uid); const viewerStudy = state.viewerStudy || state.study; const root = `/api/studies/${encodeURIComponent(viewerStudy.id)}/series/${series}/mpr`; const suffix = `&window_center=${encodeURIComponent(state.windowCenter)}&window_width=${encodeURIComponent(state.windowWidth)}&v=${Date.now()}`; $("sliceMeta").textContent = `${state.volume.shape?.join(" × ") || "volume"} · ${state.volume.modality || "DICOM"} · WC ${number(state.windowCenter, 0)} / WW ${number(state.windowWidth, 0)}`; const requests = [["axialImage", "axial", state.slice], ["coronalImage", "coronal", Math.floor((state.volume.shape?.[1] || 1) / 2)], ["sagittalImage", "sagittal", Math.floor((state.volume.shape?.[2] || 1) / 2)]].filter(([, plane]) => planes.includes(plane)); requests.forEach(([id, plane, index]) => { const image = $(id); const url = `${root}?plane=${plane}&index=${index}${suffix}`; image.classList.remove("loaded"); image.onload = () => { if (image.getAttribute("src") === url) image.classList.add("loaded"); }; image.src = url; }); updateSliceReadout(); }
+async function refreshSlices(planes = ["axial", "coronal", "sagittal"]) { if (!state.volume?.renderable || !(state.viewerStudy || state.study)) return; const series = encodeURIComponent(state.volume.series_instance_uid); const viewerStudy = state.viewerStudy || state.study; const root = `/api/studies/${encodeURIComponent(viewerStudy.id)}/series/${series}/mpr`; const suffix = `&window_center=${encodeURIComponent(state.windowCenter)}&window_width=${encodeURIComponent(state.windowWidth)}&v=${Date.now()}`; $("sliceMeta").textContent = `${state.volume.shape?.join(" × ") || "volume"} · ${state.volume.modality || "DICOM"} · WC ${number(state.windowCenter, 0)} / WW ${number(state.windowWidth, 0)}`; const requests = [["axialImage", "axial", state.slice], ["coronalImage", "coronal", Math.floor((state.volume.shape?.[1] || 1) / 2)], ["sagittalImage", "sagittal", Math.floor((state.volume.shape?.[2] || 1) / 2)]].filter(([, plane]) => planes.includes(plane)); requests.forEach(([id, plane, index]) => { const image = $(id); const url = `${root}?plane=${plane}&index=${index}${suffix}`; image.classList.remove("loaded"); image.onload = () => { if (image.getAttribute("src") === url) image.classList.add("loaded"); }; image.src = url; }); updateSliceReadout(); updateGestureScanPreview(); }
 function scheduleSliceRefresh(planes, delay = 70) { clearTimeout(state.sliceRefreshTimer); updateSliceReadout(); state.sliceRefreshTimer = setTimeout(() => refreshSlices(planes), delay); }
 
 function renderTimeline() {
@@ -545,9 +1028,9 @@ function renderAnalysisPanels() {
   evidence.querySelectorAll("[data-evidence-source]").forEach((button) => button.addEventListener("click", () => openSource(button.dataset.evidenceSource)));
 }
 
-function renderWorkspace() { renderHeader(); renderMetrics(); renderCapabilities(); renderInspector(); renderTimeline(); renderContextView(); renderStudies(); renderRailObjects(); renderRailSources(); renderAnalysisPanels(); const hasStudy = Boolean(state.study); const showEmpty = !hasStudy || (!state.model && state.mode === "model"); document.body.dataset.mode = state.mode; $("emptyState").classList.toggle("hidden", !showEmpty); $("commandbar").style.display = hasStudy ? "flex" : "none"; $("rightRail").style.display = hasStudy ? "flex" : "none"; $("workstation").classList.toggle("no-study", !hasStudy); document.querySelectorAll(".model-only-control").forEach((control) => control.classList.toggle("hidden", state.mode !== "model")); ["modelView", "sliceView", "timelineView", "contextView", "procedureView", "hologramView"].forEach((id) => $(id).classList.remove("active")); if (!showEmpty) { const target = state.mode === "model" ? "modelView" : state.mode === "slices" ? "sliceView" : state.mode === "timeline" ? "timelineView" : state.mode === "context" ? "contextView" : state.mode === "procedure" ? "procedureView" : "hologramView"; $(target).classList.add("active"); } $("timelineStrip").style.display = hasStudy && (state.mode === "model" || state.mode === "slices") ? "grid" : "none"; drawAll(); updateCrosshair(); }
+function renderWorkspace() { renderHeader(); renderMetrics(); renderCapabilities(); renderInspector(); renderTimeline(); renderContextView(); renderStudies(); renderRailObjects(); renderRailSources(); renderAnalysisPanels(); const hasStudy = Boolean(state.study); const showEmpty = !hasStudy || (!state.model && state.mode === "model"); document.body.dataset.mode = state.mode; document.body.dataset.display = isHologramDisplay ? "hologram" : ""; $("emptyState").classList.toggle("hidden", !showEmpty); $("commandbar").style.display = hasStudy ? "flex" : "none"; $("rightRail").style.display = hasStudy ? "flex" : "none"; $("workstation").classList.toggle("no-study", !hasStudy); document.querySelectorAll(".model-only-control").forEach((control) => control.classList.toggle("hidden", state.mode !== "model")); ["modelView", "sliceView", "timelineView", "contextView", "procedureView", "hologramView"].forEach((id) => $(id).classList.remove("active")); if (!showEmpty) { const target = state.mode === "model" ? "modelView" : state.mode === "slices" ? "sliceView" : state.mode === "timeline" ? "timelineView" : state.mode === "context" ? "contextView" : state.mode === "procedure" ? "procedureView" : "hologramView"; $(target).classList.add("active"); } $("timelineStrip").style.display = hasStudy && state.mode === "timeline" && state.priorModel ? "grid" : "none"; drawAll(); updateCrosshair(); updateGestureScanPreview(); broadcastHologramSync(); }
 
-async function openStudy(id) { try { state.study = await api(`/api/studies/${encodeURIComponent(id)}`); state.viewerStudy = state.study; state.model = null; state.priorModel = null; state.priorStudy = null; state.viewModel = null; state.selectedId = null; state.temporalMode = "current"; state.timelineValue = 100; state.scenePreset = "all"; state.highlights = []; state.voiceTranscript = ""; state.scenePanX = 0; state.scenePanY = 0; state.sceneZoom = 1; renderWorkspace(); await loadVolume(state.study); if (state.study.model_id) { state.model = await loadModelCached(state.study.model_id); state.viewModel = state.model; state.selectedId = defaultObjectId(state.model); resetScenePreset(); if (state.model.metadata?.prior_model_id) { try { state.priorModel = await loadModelCached(state.model.metadata.prior_model_id); state.priorStudy = await api(`/api/studies/${encodeURIComponent(state.priorModel.study_id)}`); } catch { state.priorModel = null; state.priorStudy = null; } } window.MeshView?.setModel([state.model.id, state.priorModel?.id]); warmCurrentModel(); renderWorkspace(); await loadVolume(state.study); toast("PatientModel opened from local storage"); } else { toast("Study indexed · build the PatientModel to continue"); } } catch (error) { toast(`Could not open study · ${error.message}`); } }
+async function openStudy(id) { try { ensureHologramDisplayTab(); state.study = await api(`/api/studies/${encodeURIComponent(id)}`); state.viewerStudy = state.study; state.model = null; state.priorModel = null; state.priorStudy = null; state.viewModel = null; state.selectedId = null; state.temporalMode = "current"; state.timelineValue = 100; state.scenePreset = "all"; state.highlights = []; state.voiceTranscript = ""; state.scenePanX = 0; state.scenePanY = 0; state.sceneZoom = 1; renderWorkspace(); await loadVolume(state.study); if (state.study.model_id) { state.model = await loadModelCached(state.study.model_id); state.viewModel = state.model; state.selectedId = defaultObjectId(state.model); resetScenePreset(); if (state.model.metadata?.prior_model_id) { try { state.priorModel = await loadModelCached(state.model.metadata.prior_model_id); state.priorStudy = await api(`/api/studies/${encodeURIComponent(state.priorModel.study_id)}`); } catch { state.priorModel = null; state.priorStudy = null; } } window.MeshView?.setModel([state.model.id, state.priorModel?.id]); warmCurrentModel(); renderWorkspace(); startGestureCameraForModel(); await loadVolume(state.study); toast("PatientModel opened from local storage"); } else { toast("Study indexed · build the PatientModel to continue"); } } catch (error) { toast(`Could not open study · ${error.message}`); } }
 
 // Demo preloading: model JSON is cached in memory and every mesh URL is pulled into the HTTP cache ahead of time,
 // so opening another study (or the hologram tab, which draws every object rather than the current preset) never stalls mid-demo.
@@ -590,13 +1073,41 @@ async function prefetchStudies() {
   } finally { prefetchRunning = false; }
 }
 
-async function loadStudies() { try { state.studies = await api("/api/studies"); renderStudies(); if (!state.study && state.studies.length) { const ready = state.studies.find((study) => study.status === "ready") || state.studies[0]; await openStudy(ready.id); } else renderWorkspace(); } catch (error) { renderWorkspace(); toast(`Workspace unavailable · ${error.message}`); } }
+async function loadStudies() { try { state.studies = await api("/api/studies"); renderStudies(); if (!state.study && state.studies.length) { const ready = state.studies.find((study) => /follow-up/i.test(study.description || "") && study.status === "ready") || state.studies.find((study) => study.status === "ready") || state.studies[0]; await openStudy(ready.id); } else renderWorkspace(); } catch (error) { renderWorkspace(); toast(`Workspace unavailable · ${error.message}`); } }
 
-async function importFiles(files) { if (!files?.length) return; const form = new FormData(); [...files].forEach((file) => form.append("files", file, file.name)); try { toast("Indexing DICOM study…"); const result = await api("/api/studies/import", { method: "POST", body: form }); state.studies.unshift(result.study); await openStudy(result.study.id); startCompile(result.study.id); } catch (error) { toast(`Import failed · ${error.message}`); } }
+async function pollDemoSeed(jobId) {
+  const button = $("emptyDemo");
+  const job = await api(`/api/demo/seed/${encodeURIComponent(jobId)}`);
+  if (job.job.status === "running") {
+    button.textContent = job.job.study_count ? `Loading ${job.job.study_count} samples…` : "Preparing sample workspace…";
+    setTimeout(() => pollDemoSeed(jobId).catch((error) => { button.disabled = false; button.textContent = "Explore sample workspace"; toast(`Sample workspace failed · ${error.message}`); }), 1200);
+    return;
+  }
+  if (job.job.status !== "completed") throw new Error(job.job.message || "Sample workspace could not be prepared");
+  await loadStudies();
+  toast(`${job.job.study_count || 0} synthetic studies ready`);
+}
+
+async function seedDemoWorkspace() {
+  const button = $("emptyDemo");
+  button.disabled = true;
+  button.textContent = "Preparing sample workspace…";
+  try {
+    const result = await api("/api/demo/seed", { method: "POST" });
+    if (result.job.status === "completed") { await loadStudies(); toast(`${result.job.study_count || 0} synthetic studies ready`); return; }
+    await pollDemoSeed(result.job.id);
+  } catch (error) {
+    button.disabled = false;
+    button.textContent = "Explore sample workspace";
+    toast(`Sample workspace failed · ${error.message}`);
+  }
+}
+
+async function importFiles(files) { if (!files?.length) return; ensureHologramDisplayTab(); const form = new FormData(); [...files].forEach((file) => form.append("files", file, file.name)); try { toast("Indexing DICOM study…"); const result = await api("/api/studies/import", { method: "POST", body: form }); state.studies.unshift(result.study); await openStudy(result.study.id); startCompile(result.study.id); } catch (error) { toast(`Import failed · ${error.message}`); } }
 
 function openCompile(jobId) { showSheet("compileSheet"); $("compileProgress").style.width = "0%"; $("compileProgressText").textContent = "0%"; $("compileMessage").textContent = "Preparing study…"; const stages = ["Validate DICOM study", "Reconstruct source volume", "Extract image statistics", "Generate object candidates", "Build spatial index", "Calculate relationships", "Bind available context", "Register compatible prior models", "Persist PatientModel"]; $("compileStageList").innerHTML = stages.map((stage, index) => `<div class="compile-stage" data-stage-index="${index}"><i>${index + 1}</i><span>${stage}</span><small></small></div>`).join(""); $("compileSheet").dataset.jobId = jobId; }
-async function startCompile(studyId) { try { const result = await api(`/api/studies/${encodeURIComponent(studyId)}/compile`, { method: "POST" }); openCompile(result.job.id); pollCompile(result.job.id); } catch (error) { toast(`Compiler could not start · ${error.message}`); } }
-async function pollCompile(jobId) { try { const job = await api(`/api/jobs/${encodeURIComponent(jobId)}`); $("compileProgress").style.width = `${job.progress}%`; $("compileProgressText").textContent = `${job.progress}%`; $("compileMessage").textContent = job.message || job.stage; const rows = [...document.querySelectorAll(".compile-stage")]; const current = rows.findIndex((row) => row.querySelector("span").textContent === job.stage); rows.forEach((row, index) => { const done = index < current || job.status === "completed"; row.classList.toggle("active", index === current); row.classList.toggle("done", done); row.querySelector("i").textContent = done ? "✓" : String(index + 1); row.querySelector("small").textContent = done ? "done" : index === current ? "running" : ""; }); if (job.status === "completed") { closeSheet("compileSheet"); const study = await api(`/api/studies/${encodeURIComponent(job.study_id)}`); state.study = study; state.model = await api(`/api/patient-models/${encodeURIComponent(study.model_id)}`); state.priorModel = null; state.priorStudy = null; state.temporalMode = "current"; state.timelineValue = 100; state.viewModel = state.model; state.selectedId = defaultObjectId(state.model); if (state.model.metadata?.prior_model_id) { try { state.priorModel = await api(`/api/patient-models/${encodeURIComponent(state.model.metadata.prior_model_id)}`); state.priorStudy = await api(`/api/studies/${encodeURIComponent(state.priorModel.study_id)}`); } catch {} } renderWorkspace(); await loadVolume(study); toast("PatientModel ready · derived data persisted"); return; } if (job.status === "failed") { toast(`Compilation stopped · ${job.error || "unknown error"}`); return; } setTimeout(() => pollCompile(jobId), 380); } catch (error) { toast(`Compiler status unavailable · ${error.message}`); } }
+async function startCompile(studyId) { ensureHologramDisplayTab(); try { const result = await api(`/api/studies/${encodeURIComponent(studyId)}/compile`, { method: "POST" }); openCompile(result.job.id); pollCompile(result.job.id); } catch (error) { toast(`Compiler could not start · ${error.message}`); } }
+async function pollCompile(jobId) { try { const job = await api(`/api/jobs/${encodeURIComponent(jobId)}`); $("compileProgress").style.width = `${job.progress}%`; $("compileProgressText").textContent = `${job.progress}%`; $("compileMessage").textContent = job.message || job.stage; const rows = [...document.querySelectorAll(".compile-stage")]; const current = rows.findIndex((row) => row.querySelector("span").textContent === job.stage); rows.forEach((row, index) => { const done = index < current || job.status === "completed"; row.classList.toggle("active", index === current); row.classList.toggle("done", done); row.querySelector("i").textContent = done ? "✓" : String(index + 1); row.querySelector("small").textContent = done ? "done" : index === current ? "running" : ""; }); if (job.status === "completed") { closeSheet("compileSheet"); const study = await api(`/api/studies/${encodeURIComponent(job.study_id)}`); state.study = study; state.model = await api(`/api/patient-models/${encodeURIComponent(study.model_id)}`); state.priorModel = null; state.priorStudy = null; state.temporalMode = "current"; state.timelineValue = 100; state.viewModel = state.model; state.selectedId = defaultObjectId(state.model); if (state.model.metadata?.prior_model_id) { try { state.priorModel = await api(`/api/patient-models/${encodeURIComponent(state.model.metadata.prior_model_id)}`); state.priorStudy = await api(`/api/studies/${encodeURIComponent(state.priorModel.study_id)}`); } catch {} } renderWorkspace(); startGestureCameraForModel(); await loadVolume(study); toast("PatientModel ready · derived data persisted"); return; } if (job.status === "failed") { toast(`Compilation stopped · ${job.error || "unknown error"}`); return; } setTimeout(() => pollCompile(jobId), 380); } catch (error) { toast(`Compiler status unavailable · ${error.message}`); } }
 
 async function reviewObject(status) { const object = currentObject(); if (!object || !state.model) return; try { const updated = await api(`/api/models/${encodeURIComponent(state.model.id)}/objects/${encodeURIComponent(object.id)}/review`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ status }) }); object.review_status = updated.review_status; state.model = await api(`/api/patient-models/${encodeURIComponent(state.model.id)}`); state.viewModel = state.model; renderWorkspace(); toast(`${object.label} marked ${status}`); } catch (error) { toast(`Review failed · ${error.message}`); } }
 
@@ -840,12 +1351,18 @@ function setMode(mode) { if (mode !== "procedure") leavePathMode(); if (mode !==
 
 function wireEvents() {
   setTheme(state.theme);
+  $("gestureButton").addEventListener("click", toggleGestureCamera);
+  $("hologramGesture").addEventListener("click", toggleGestureCamera);
+  $("gestureEnable").addEventListener("click", startGestureCamera);
+  $("gesturePreviewToggle").addEventListener("click", toggleGesturePreview);
+  $("gestureScanClose").addEventListener("click", closeGestureScanPreview);
+  $("gestureClose").addEventListener("click", () => stopGestureCamera(true));
   $("themeButton").addEventListener("click", () => { setTheme(state.theme === "contrast" ? "light" : "contrast"); toast(state.theme === "contrast" ? "High contrast display" : "Standard clinical display"); });
-  $("importButton").addEventListener("click", () => $("dicomInput").click()); $("emptyImport").addEventListener("click", () => $("dicomInput").click()); $("newStudy").addEventListener("click", () => $("dicomInput").click()); $("dicomInput").addEventListener("change", (event) => { importFiles(event.target.files); event.target.value = ""; }); $("folderButton").addEventListener("click", () => $("folderInput").click()); $("folderInput").addEventListener("change", (event) => { importFiles(event.target.files); event.target.value = ""; }); $("seriesControl").addEventListener("click", openSeriesChooser);
+  $("importButton").addEventListener("click", () => $("dicomInput").click()); $("emptyImport").addEventListener("click", () => $("dicomInput").click()); $("dicomInput").addEventListener("change", (event) => { importFiles(event.target.files); event.target.value = ""; }); $("folderButton").addEventListener("click", () => $("folderInput").click()); $("folderInput").addEventListener("change", (event) => { importFiles(event.target.files); event.target.value = ""; }); $("seriesControl").addEventListener("click", openSeriesChooser);
   $("contextImport").addEventListener("click", () => state.model ? $("contextInput").click() : toast("Compile a PatientModel before adding context")); $("contextInput").addEventListener("change", (event) => importContextFile(event.target.files[0]));
   $("exportButton").addEventListener("click", () => showSheet("exportSheet")); $("historyButton").addEventListener("click", openModelHistory); $("inspectorMenu").addEventListener("click", () => state.model ? showSheet("exportSheet") : toast("Open a PatientModel first"));
   $("exportJson").addEventListener("click", () => exportRepresentation("json")); $("exportGraph").addEventListener("click", () => exportRepresentation("graph")); $("exportContext").addEventListener("click", () => exportRepresentation("context"));
-  $("gatewayButton").addEventListener("click", openGateway); $("emptyGateway").addEventListener("click", openGateway); $("modelLabButton").addEventListener("click", openModelLab); $("modelLabForm").addEventListener("submit", trainModelLab); $("inspectQuality").addEventListener("click", inspectModelLabQuality); $("analyzeCohort").addEventListener("click", analyzeModelLabCohort); $("importModelLabels").addEventListener("click", () => $("modelLabLabelFile").click()); $("modelLabLabelFile").addEventListener("change", (event) => { importModelLabels(event.target.files[0]); event.target.value = ""; });
+  $("gatewayButton").addEventListener("click", openGateway); $("emptyGateway").addEventListener("click", openGateway); $("emptyDemo").addEventListener("click", seedDemoWorkspace); $("modelLabButton").addEventListener("click", openModelLab); $("modelLabForm").addEventListener("submit", trainModelLab); $("inspectQuality").addEventListener("click", inspectModelLabQuality); $("analyzeCohort").addEventListener("click", analyzeModelLabCohort); $("importModelLabels").addEventListener("click", () => $("modelLabLabelFile").click()); $("modelLabLabelFile").addEventListener("change", (event) => { importModelLabels(event.target.files[0]); event.target.value = ""; });
   $("studySearch").addEventListener("input", (event) => { state.search = event.target.value; renderStudies(); }); $("studyFilter").addEventListener("click", () => { state.filterReady = !state.filterReady; $("studyFilter").classList.toggle("active", state.filterReady); renderStudies(); });
   document.querySelectorAll("[data-library-view]").forEach((button) => button.addEventListener("click", () => { document.querySelectorAll("[data-library-view]").forEach((item) => item.classList.toggle("active", item === button)); document.querySelectorAll("[data-rail-panel]").forEach((panel) => panel.classList.toggle("active", panel.dataset.railPanel === button.dataset.libraryView)); }));
   document.querySelectorAll("[data-analysis-tab]").forEach((button) => button.addEventListener("click", () => { document.querySelectorAll("[data-analysis-tab]").forEach((item) => item.classList.toggle("active", item === button)); document.querySelectorAll("[data-analysis-panel]").forEach((panel) => panel.classList.toggle("active", panel.dataset.analysisPanel === button.dataset.analysisTab)); }));
@@ -900,13 +1417,13 @@ function wireEvents() {
   });
   document.addEventListener("keyup", (event) => { if (event.key === " " && state.voiceHeld) { event.preventDefault(); stopVoiceCapture(); } });
   window.addEventListener("blur", stopVoiceCapture);
-  document.addEventListener("visibilitychange", () => { if (document.hidden) stopVoiceCapture(); });
+  document.addEventListener("visibilitychange", () => { if (document.hidden) { stopVoiceCapture(); if (!isHologramDisplay && state.gestureCamera?.running) stopGestureCamera(false); } });
   document.addEventListener("keydown", (event) => { if (event.key === "Escape" && state.mode === "hologram") { stopVoiceCapture(); setMode("model"); } });
   document.querySelectorAll("[data-mode-jump]").forEach((button) => button.addEventListener("click", () => setMode(button.dataset.modeJump)));
-  document.querySelectorAll("[data-tool]").forEach((button) => button.addEventListener("click", () => { const tool = button.dataset.tool; if (tool === "path") { if (state.pathMode) { leavePathMode(); setMode("model"); toast("Trajectory drawing canceled"); } else startPath(); return; } if (tool === "measure" && state.activeTool === "measure") { activateTool("rotate"); toast("Measure tool closed"); return; } if (state.mode === "procedure") setMode("model"); activateTool(tool); toast(`${tool[0].toUpperCase() + tool.slice(1)} tool active`); }));
+  document.querySelectorAll("[data-tool]").forEach((button) => button.addEventListener("click", () => { const tool = button.dataset.tool; if (tool === "measure" && state.activeTool === "measure") { activateTool("rotate"); toast("Measure tool closed"); return; } if (state.mode === "procedure") setMode("model"); activateTool(tool); toast(`${tool[0].toUpperCase() + tool.slice(1)} tool active`); }));
   document.querySelectorAll("[data-temporal-mode]").forEach((button) => button.addEventListener("click", () => setTemporalMode(button.dataset.temporalMode)));
   $("resetButton").addEventListener("click", () => { state.isolate = false; state.showLinks = false; state.highlights = []; state.voiceTranscript = ""; resetScenePreset(); leavePathMode(); activateTool("rotate"); state.measurePoints = []; state.measureResult = null; state.sceneYaw = CAM_DEFAULT.yaw; state.scenePitch = CAM_DEFAULT.pitch; state.sceneZoom = 1; state.scenePanX = 0; state.scenePanY = 0; state.temporalMode = "current"; state.timelineValue = 100; $("timelineInput").value = "100"; $("timelineFill").style.width = "100%"; $("timelineLabel").textContent = "Current study"; $("measureReadout").classList.add("hidden"); state.viewModel = state.model; loadVolume(state.study); renderTimeline(); drawAll(); renderInspector(); toast("View reset"); });
-  $("sceneFit").addEventListener("click", () => { fitScene(); toast("Scene fitted to visible geometry"); }); $("sceneNeighbors").addEventListener("click", () => { state.showLinks = !state.showLinks; drawAll(); renderInspector(); toast(state.showLinks ? "Selected structure relations shown" : "Relations hidden"); }); $("sceneIsolate").addEventListener("click", () => { state.isolate = !state.isolate; fitScene(); renderInspector(); toast(state.isolate ? "Selected structure isolated" : "All visible structures restored"); });
+  $("sceneNeighbors").addEventListener("click", () => { state.showLinks = !state.showLinks; drawAll(); renderInspector(); toast(state.showLinks ? "Selected structure links shown" : "Links hidden"); }); $("sceneIsolate").addEventListener("click", () => { state.isolate = !state.isolate; fitScene(); renderInspector(); toast(state.isolate ? "Selected structure isolated" : "All visible structures restored"); });
   $("sceneAnatomy").addEventListener("click", (event) => { const group = cycleAnatomyGroup(event.shiftKey ? -1 : 1); toast(group ? `${group.label} view` : "All segmented anatomy"); });
   $("startPath").addEventListener("click", startPath);
   $("clearMeasure").addEventListener("click", () => { state.measurePoints = []; state.measureResult = null; $("measureReadout").classList.add("hidden"); drawAll(); });
@@ -928,4 +1445,4 @@ function wireEvents() {
   window.addEventListener("resize", drawAll);
 }
 
-wireEvents(); renderWorkspace(); loadStudies().then(() => whenIdle(prefetchStudies));
+wireEvents(); renderWorkspace(); if (isHologramDisplay) { startGestureCamera(); hologramChannel?.postMessage({ type: "ready" }); } loadStudies().then(() => whenIdle(prefetchStudies));

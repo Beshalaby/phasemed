@@ -8,13 +8,15 @@ import math
 import os
 import shutil
 import sqlite3
+import subprocess
+import sys
 import threading
 import uuid
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
 
-from fastapi import BackgroundTasks, FastAPI, File, Form, HTTPException, Query, UploadFile
+from fastapi import BackgroundTasks, FastAPI, File, Form, HTTPException, Query, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
@@ -42,16 +44,20 @@ from .geometry import (
 )
 from .models import JobState, PatientModel, SpatialQuery, StudySummary, TimelineEntry, now_iso
 from .model_lab import FEATURE_NAMES, FEATURE_SCHEMA, analyze_cohort, cross_validate, dataset_rows, extract_features, predict as predict_algorithm, summarize_dataset, train_algorithm
+from .trial_studio import randomize as trial_randomize, simulate as trial_simulate
 
 
 ROOT = Path(__file__).resolve().parents[1]
 RUNTIME = Path(os.getenv("PHASEMED_RUNTIME_DIR", str(ROOT / ".runtime"))).expanduser().resolve()
 STUDY_ROOT = RUNTIME / "studies"
 MODEL_ROOT = RUNTIME / "models"
+TRIAL_ROOT = RUNTIME / "trial-runs"
 DB_PATH = RUNTIME / "phasemed.sqlite3"
 WEB_ROOT = ROOT / "web"
 CSTORE_RECEIVER: CStoreReceiver | None = None
-for path in (STUDY_ROOT, MODEL_ROOT):
+DEMO_SEED_LOCK = threading.Lock()
+DEMO_SEED_JOBS: dict[str, dict[str, Any]] = {}
+for path in (STUDY_ROOT, MODEL_ROOT, TRIAL_ROOT):
     path.mkdir(parents=True, exist_ok=True)
 
 @asynccontextmanager
@@ -490,6 +496,55 @@ async def dicomweb_stow(file: UploadFile = File(...)) -> dict:
 @app.get("/api/studies")
 def list_studies() -> list[dict]:
     conn = db(); rows = conn.execute("SELECT payload FROM studies ORDER BY id DESC").fetchall(); conn.close(); return [json.loads(row["payload"]) for row in rows]
+
+
+def _demo_studies() -> list[dict]:
+    return [study for study in list_studies() if str(study.get("patient_id", "")).startswith("DEMO-")]
+
+
+def _run_demo_seed(job_id: str, base_url: str) -> None:
+    try:
+        command = [sys.executable, str(ROOT / "scripts" / "seed_demo_data.py"), "--base-url", base_url]
+        result = subprocess.run(command, cwd=ROOT, capture_output=True, text=True, timeout=900, check=False)
+        output = (result.stdout or result.stderr or "").strip().splitlines()
+        with DEMO_SEED_LOCK:
+            DEMO_SEED_JOBS[job_id] = {
+                "id": job_id,
+                "status": "completed" if result.returncode == 0 else "failed",
+                "message": output[-1] if output else ("Sample workspace ready" if result.returncode == 0 else "Sample workspace could not be prepared"),
+                "study_count": len(_demo_studies()),
+            }
+    except Exception as exc:
+        with DEMO_SEED_LOCK:
+            DEMO_SEED_JOBS[job_id] = {"id": job_id, "status": "failed", "message": str(exc), "study_count": len(_demo_studies())}
+
+
+@app.post("/api/demo/seed")
+def seed_demo_workspace(request: Request) -> dict:
+    existing = _demo_studies()
+    if existing:
+        return {"job": {"id": "demo-existing", "status": "completed", "message": "Synthetic sample workspace already loaded", "study_count": len(existing)}}
+    with DEMO_SEED_LOCK:
+        running = next((job for job in DEMO_SEED_JOBS.values() if job["status"] == "running"), None)
+        if running:
+            return {"job": running}
+        job_id = f"demo-{uuid.uuid4().hex[:12]}"
+        job = {"id": job_id, "status": "running", "message": "Preparing synthetic DICOM studies…", "study_count": 0}
+        DEMO_SEED_JOBS[job_id] = job
+    host = request.url.hostname or "127.0.0.1"
+    port = request.url.port
+    base_url = f"{request.url.scheme}://{host}{f':{port}' if port else ''}"
+    threading.Thread(target=_run_demo_seed, args=(job_id, base_url), daemon=True).start()
+    return {"job": job}
+
+
+@app.get("/api/demo/seed/{job_id}")
+def demo_seed_status(job_id: str) -> dict:
+    with DEMO_SEED_LOCK:
+        job = DEMO_SEED_JOBS.get(job_id)
+    if not job:
+        raise HTTPException(404, "Demo seed job not found")
+    return {"job": job}
 
 
 @app.post("/api/studies/import")
@@ -1537,12 +1592,67 @@ def patient_model_export(model_id: str) -> JSONResponse:
     return export_model(model_id)
 
 
+def _trial_run_path(run_id: str) -> Path:
+    safe = "".join(character for character in run_id if character.isalnum() or character in "-_")
+    return TRIAL_ROOT / f"{safe}.json"
+
+
+@app.post("/api/trial-studio/simulate")
+def trial_studio_simulate(payload: dict) -> dict:
+    """Run a seeded trial-planning simulation and persist its audit artifact."""
+    try:
+        result = trial_simulate(payload)
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from exc
+    run_id = f"trial-{uuid.uuid4().hex[:12]}"
+    result["run_id"] = run_id
+    TRIAL_ROOT.mkdir(parents=True, exist_ok=True)
+    _atomic_write_text(_trial_run_path(run_id), json.dumps(result, indent=2))
+    audit_event("trial.simulated", run_id, {"endpoint": result["design"]["endpoint"], "seed": result["design"]["seed"], "simulations": result["design"]["simulations"]})
+    return result
+
+
+@app.get("/api/trial-studio/runs")
+def trial_studio_runs() -> list[dict]:
+    runs = []
+    for path in sorted(TRIAL_ROOT.glob("trial-*.json"), key=lambda item: item.stat().st_mtime, reverse=True):
+        try:
+            result = json.loads(path.read_text(encoding="utf-8"))
+            runs.append({"run_id": result.get("run_id", path.stem), "title": result.get("design", {}).get("title"), "endpoint": result.get("design", {}).get("endpoint"), "achieved_power": result.get("operating_characteristics", {}).get("achieved_power"), "created_at": path.stat().st_mtime})
+        except (OSError, json.JSONDecodeError):
+            continue
+    return runs[:50]
+
+
+@app.get("/api/trial-studio/runs/{run_id}")
+def trial_studio_run(run_id: str) -> dict:
+    path = _trial_run_path(run_id)
+    if not path.exists():
+        raise HTTPException(404, "Trial simulation not found")
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        raise HTTPException(500, "Trial simulation artifact is invalid") from exc
+
+
+@app.post("/api/trial-studio/randomize")
+def trial_studio_randomize(payload: dict) -> dict:
+    try:
+        result = trial_randomize(payload)
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from exc
+    audit_event("trial.randomized", f"randomization:{result['seed']}", {"participant_count": len(result["assignments"]), "seed": result["seed"]})
+    return result
+
+
 @app.get("/{path:path}")
 def frontend(path: str = "") -> FileResponse:
     if not path:
         return FileResponse(WEB_ROOT / "landing.html")
     if path.rstrip("/") in {"workspace", "workstation"}:
         return FileResponse(WEB_ROOT / "index.html")
+    if path.rstrip("/") in {"trial-studio", "trial"}:
+        return FileResponse(WEB_ROOT / "trial-studio.html")
     candidate = (WEB_ROOT / path).resolve() if not path.startswith("api/") else WEB_ROOT / "index.html"
     try:
         candidate.relative_to(WEB_ROOT.resolve())

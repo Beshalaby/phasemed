@@ -77,7 +77,7 @@ void main() {
   function release(entry) { if (!gl || entry.state !== "ready") return; gl.deleteVertexArray(entry.vao); entry.buffers.forEach((buffer) => gl.deleteBuffer(buffer)); }
 
   const api = {
-    ok: false, canvas, onReady: null,
+    ok: false, canvas, onReady: null, parseObj,
     key: (modelId, objectId) => `${modelId}:${objectId}`,
     // Returns true once the object's mesh is on the GPU; starts loading it otherwise.
     ensure(modelId, object) {

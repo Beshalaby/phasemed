@@ -24,7 +24,7 @@ jobs:
       - name: Check Python syntax
         run: python -m compileall -q backend scripts
       - name: Check browser bundle syntax
-        run: node --check web/app.js && node --check web/landing.js
+        run: node --check web/app.js && node --check web/landing.js && node --check web/gesture-camera.js
       - name: Check patch whitespace
         run: git diff --check
       - name: Run tests

@@ -13,29 +13,30 @@
   <div class="app-shell">
     <header class="topbar">
       <a class="brand" href="/" aria-label="Phasemed"><span class="brand-glyph" aria-hidden="true"><i></i><i></i></span><span class="brand-wordmark">Phasemed</span></a>
-      <div class="patient-route" id="patientRoute"><span id="headerPatient"></span><b>›</b><span id="studyTitle"></span><b>›</b><span id="modelCrumb"></span></div>
       <div class="topbar-actions">
-        <button class="round-action" id="gatewayButton" aria-label="Open DICOM gateway" title="DICOM gateway">⌁</button>
-        <button class="round-action" id="themeButton" aria-label="Toggle display contrast" title="Display contrast">◐</button>
-        <button class="quiet-action" id="contextImport">Attach evidence</button>
-        <button class="quiet-action" id="modelLabButton">Model lab</button>
-        <button class="primary-action" id="exportButton" disabled>Export</button>
+        <button class="quiet-action topbar-action" id="gatewayButton" aria-label="Open imaging sources" title="Browse connected imaging sources"><span class="action-icon" aria-hidden="true">⌁</span><span>Imaging sources</span></button>
+        <button class="quiet-action topbar-action" id="contextImport" title="Add notes and other evidence to the model"><span class="action-icon" aria-hidden="true">＋</span><span>Add evidence</span></button>
+        <button class="primary-action topbar-action" id="exportButton" aria-label="Export model" title="Export the current PatientModel" disabled><span>Export model</span></button>
+        <details class="utility-menu">
+          <summary class="quiet-action utility-summary" aria-label="Open more workspace tools"><span class="action-icon" aria-hidden="true">•••</span><span>More</span></summary>
+          <div class="utility-menu-panel">
+            <a class="utility-item" href="/trial-studio"><span>⊙</span><span><strong>Trial planning</strong><small>Design and simulate a study</small></span></a>
+            <button class="utility-item" id="themeButton" aria-label="Change display contrast"><span>◐</span><span><strong>Contrast</strong><small>Adjust display readability</small></span></button>
+            <button class="utility-item" id="gestureButton" aria-label="Toggle camera control"><span>✦</span><span><strong>Camera</strong><small>Control the view with gestures</small></span></button>
+            <button class="utility-item" id="modelLabButton"><span>⌁</span><span><strong>Analyze model</strong><small>Inspect model quality and signals</small></span></button>
+          </div>
+        </details>
       </div>
     </header>
 
     <div class="commandbar" id="commandbar">
       <div class="series-control" id="seriesControl"><span class="file-icon">▧</span><strong id="seriesTitle"></strong><span id="seriesChevron">⌄</span></div>
-      <div class="command-separator model-only-control"></div>
       <button class="tool-control model-only-control" data-tool="measure"><span>╱</span>Measure</button>
-      <button class="tool-control model-only-control" data-tool="path"><span>⌇</span>Path</button>
-      <div class="command-separator model-only-control"></div>
-      <button class="tool-control model-only-control" id="sceneNeighbors" aria-pressed="false" title="Show spatial links from the selected structure"><span>⋯</span>Relations</button>
+      <button class="tool-control model-only-control" id="sceneNeighbors" aria-pressed="false" title="Show spatial links from the selected structure"><span>⋯</span>Links</button>
       <button class="tool-control model-only-control" id="sceneIsolate" aria-pressed="false" title="Show only the selected structure"><span>◉</span>Isolate</button>
       <button class="tool-control model-only-control" id="sceneAnatomy" aria-pressed="false"><span>◒</span><span id="sceneAnatomyLabel">Anatomy</span></button>
-      <button class="tool-control model-only-control" id="sceneFit" title="Center and fit the visible anatomy"><span>⌗</span>Fit</button>
       <button class="tool-control model-only-control" id="resetButton"><span>↺</span>Reset</button>
       <div class="command-spacer"></div>
-      <span class="linked-state" id="linkedState"><i></i></span>
       <div class="view-switch" role="tablist" aria-label="Workspace views">
         <button class="mode-item active" data-mode="model" role="tab">Model</button>
         <button class="mode-item" data-mode="slices" role="tab">Review</button>
@@ -48,7 +49,6 @@
 
     <main class="workstation" id="workstation">
       <aside class="left-rail">
-        <div class="rail-patient"><div><strong id="railPatient">Studies</strong><span id="studySubtitle">Import a study</span></div><button id="newStudy" aria-label="Import a new study" title="Import a new study">＋</button></div>
         <div class="rail-tabs" role="tablist" aria-label="Library sections"><button class="active" data-library-view="studies">Studies</button><button data-library-view="objects">Findings</button><button data-library-view="sources">Evidence</button></div>
         <div class="rail-search"><span>⌕</span><input id="studySearch" placeholder="Search studies" autocomplete="off" /><button id="studyFilter" aria-label="Show ready studies only" title="Ready only">≡</button></div>
         <div class="rail-view active" data-rail-panel="studies"><div class="study-list" id="studyList"></div></div>
@@ -58,15 +58,14 @@
       </aside>
 
       <section class="viewport-stage" id="visualArea">
-        <div class="empty-state" id="emptyState"><div class="clinical-symbol" aria-hidden="true"><i></i><i></i><i></i></div><h1>Open a study</h1><div class="empty-actions"><button class="primary-action" id="emptyImport">Open DICOM study</button><button class="quiet-action" id="emptyGateway">Connect gateway</button></div></div>
+        <div class="empty-state" id="emptyState"><div class="clinical-symbol" aria-hidden="true"><i></i><i></i><i></i></div><span class="empty-kicker">PATIENT MODEL WORKSPACE</span><h1>Start with a study</h1><p>Explore the full workflow with synthetic samples, or open your own DICOM study.</p><div class="empty-actions"><button class="primary-action" id="emptyDemo">Explore sample workspace</button><button class="quiet-action" id="emptyImport">Open DICOM study</button><button class="quiet-action" id="emptyGateway">Connect gateway</button></div><small>Samples are synthetic and contain no patient data.</small></div>
 
         <section class="mode-panel model-view" id="modelView">
           <canvas id="sceneCanvas" aria-label="Patient model scene"></canvas>
           <div class="viewport-topline"><div><span id="sceneSummary">Select an object to inspect it</span></div></div>
           <div class="model-orientation" id="orientWidget" aria-hidden="true"><i></i><span data-axis="L">L</span><span data-axis="R">R</span><span data-axis="A">A</span><span data-axis="P">P</span><span data-axis="S">S</span><span data-axis="I">I</span></div>
           <div class="model-scale"><span></span><b>50 mm</b></div>
-          <div class="scene-readout"><span id="sceneCount">No geometry loaded</span><span id="sceneCoordinate">LPS patient coordinates</span></div>
-          <div class="scene-gesture-hint"><span>click select</span><span>drag orbit</span><span>⇧ drag pan</span><span>scroll zoom</span></div>
+          <div class="scene-gesture-hint"><span>click select</span><span>drag orbit</span><span>⇧ drag pan</span><span>scroll zoom</span><span>camera gestures</span></div>
           <div class="scene-callout hidden" id="sceneCallout"><strong id="calloutTitle">Object</strong><span id="calloutText">Selected</span></div>
           <div class="measure-readout hidden" id="measureReadout"><span>MEASUREMENT</span><strong id="measureValue">—</strong><button id="clearMeasure">×</button></div>
         </section>
@@ -81,15 +80,14 @@
           <div class="image-console"><label><span>Slice</span><input id="sliceInput" type="range" min="0" max="0" value="0" /><output id="sliceOutput">0 / 0</output></label><label><span>Window</span><input id="windowWidthInput" type="range" min="1" max="4000" step="1" value="400" /><output id="windowWidthOutput">400 HU</output></label><label><span>Level</span><input id="windowCenterInput" type="range" min="-2000" max="3000" step="1" value="40" /><output id="windowCenterOutput">40 HU</output></label></div>
         </section>
 
-        <section class="mode-panel timeline-view" id="timelineView"><header class="section-intro"><div><h2>Longitudinal comparison</h2></div><span id="timelineStatus"></span></header><div class="temporal-toolbar"><div class="temporal-modes" role="tablist" aria-label="Temporal view mode"><button class="active" data-temporal-mode="current" role="tab" aria-selected="true">Current</button><button data-temporal-mode="prior" role="tab" aria-selected="false">Prior</button><button data-temporal-mode="overlay" role="tab" aria-selected="false">Overlay</button><button data-temporal-mode="difference" role="tab" aria-selected="false">Difference</button><button data-temporal-mode="morph" role="tab" aria-selected="false">Morph</button></div><p id="temporalModeNote">No prior PatientModel is linked to this study.</p></div><div class="change-stage"><div class="timeline-rail" id="timelineRail"></div><div class="timeline-detail" id="timelineDetail"><span class="timeline-empty">No comparison available.</span></div></div></section>
+        <section class="mode-panel timeline-view" id="timelineView"><header class="section-intro"><div><h2>Longitudinal comparison</h2></div><span id="timelineStatus"></span></header><div class="temporal-toolbar"><div class="temporal-modes" role="tablist" aria-label="Temporal view mode"><button class="active" data-temporal-mode="current" role="tab" aria-selected="true">Current</button><button data-temporal-mode="prior" role="tab" aria-selected="false">Prior</button><button data-temporal-mode="overlay" role="tab" aria-selected="false">Overlay</button><button data-temporal-mode="difference" role="tab" aria-selected="false">Difference</button><button data-temporal-mode="morph" role="tab" aria-selected="false">Morph</button></div><p id="temporalModeNote">No prior PatientModel is linked to this study.</p></div><div class="timeline-controls" id="timelineStrip"><button id="timelinePlay" aria-label="Play timeline">▶</button><div><strong id="timelineLabel">Current study</strong></div><div class="timeline-slider" id="timelineSlider"><span id="timelineFill"></span><input id="timelineInput" type="range" min="0" max="100" value="100" aria-label="Model time" /></div><div class="timeline-ends"><span>PRIOR</span><span>CURRENT</span></div></div><div class="change-stage"><div class="timeline-rail" id="timelineRail"></div><div class="timeline-detail" id="timelineDetail"><span class="timeline-empty">No comparison available.</span></div></div></section>
 
         <section class="mode-panel context-view" id="contextView"><header class="section-intro"><div><h2>Evidence</h2></div><button class="quiet-action" id="contextAskModel">Ask model</button></header><form class="context-search" id="contextSearchForm"><label><span>⌕</span><input id="contextQueryInput" placeholder="Search evidence" autocomplete="off" /></label><button class="primary-action">Search</button></form><div class="context-list" id="contextList"></div></section>
 
         <section class="mode-panel procedure-view" id="procedureView"><div class="procedure-sidebar"><h2>Trajectory analysis</h2><p>Place an entry point and target. Length, intersections, and minimum clearances are computed from model geometry.</p><button class="primary-action" id="startPath">Draw path</button><div class="procedure-result" id="procedureResult"><span class="result-placeholder">No trajectory calculated.</span></div><small>Planning visualization only. Not clinically validated.</small></div><div class="procedure-canvas"><canvas id="procedureCanvas" aria-label="Procedure path preview"></canvas><div class="path-hint">ENTRY → TARGET</div></div></section>
 
-        <section class="mode-panel hologram-view" id="hologramView"><div class="hologram-frame"><canvas id="hologramCanvas" aria-label="Four-direction Pepper's Ghost hologram preview"></canvas></div><button class="hologram-exit" id="hologramExit" aria-label="Exit hologram view">× <span>Exit</span></button><div class="hologram-controls"><button id="hologramVoice" class="voice-button" aria-label="Hold to speak a command">◉ <span>Hold space to speak</span></button><button id="hologramAnatomy" aria-label="Cycle anatomy filter">◒ <span>Lungs</span></button><button id="hologramSpin" class="active" aria-pressed="true" aria-label="Toggle auto rotation">◐ <span>Pause</span></button><button id="hologramZoomOut" aria-label="Zoom out">−</button><button id="hologramZoomIn" aria-label="Zoom in">+</button><button id="hologramReset" aria-label="Reset hologram view">Reset</button><small id="hologramVoiceHint">hold space speak · drag rotate · scroll zoom</small></div></section>
+        <section class="mode-panel hologram-view" id="hologramView"><div class="hologram-frame"><canvas id="hologramCanvas" aria-label="Four-direction Pepper's Ghost hologram preview"></canvas></div><button class="hologram-exit" id="hologramExit" aria-label="Exit hologram view">× <span>Exit</span></button><div class="hologram-controls"><button id="hologramVoice" class="voice-button" aria-label="Hold to speak a command">◉ <span>Hold space to speak</span></button><button id="hologramGesture" class="gesture-button" aria-label="Toggle gesture camera">✦ <span>Camera</span></button><button id="hologramAnatomy" aria-label="Cycle anatomy filter">◒ <span>Lungs</span></button><button id="hologramSpin" class="active" aria-pressed="true" aria-label="Toggle auto rotation">◐ <span>Pause</span></button><button id="hologramZoomOut" aria-label="Zoom out">−</button><button id="hologramZoomIn" aria-label="Zoom in">+</button><button id="hologramReset" aria-label="Reset hologram view">Reset</button><small id="hologramVoiceHint">hold space speak · drag rotate · scroll zoom</small></div></section>
 
-        <div class="timeline-strip" id="timelineStrip"><button id="timelinePlay" aria-label="Play timeline">▶</button><div><strong id="timelineLabel">Current study</strong></div><div class="timeline-slider" id="timelineSlider"><span id="timelineFill"></span><input id="timelineInput" type="range" min="0" max="100" value="100" aria-label="Model time" /></div><div class="timeline-ends"><span>PRIOR</span><span>CURRENT</span></div></div>
       </section>
 
       <aside class="right-rail" id="rightRail">
@@ -98,8 +96,6 @@
         <div class="analysis-body active" data-analysis-panel="object"><div class="inspector-content" id="inspectorContent"><div class="inspector-empty"><span></span><p>Select anatomy in the model or library.</p></div></div></div>
         <div class="analysis-body" data-analysis-panel="graph"><div id="graphInspector" class="graph-inspector"><div class="rail-placeholder">Select an object to inspect its spatial graph.</div></div></div>
         <div class="analysis-body" data-analysis-panel="evidence"><div id="evidenceInspector" class="evidence-inspector"><div class="rail-placeholder">No evidence selected.</div></div></div>
-        <div class="model-facts"><div><span>Objects</span><strong id="metricObjects">—</strong></div><div><span>Relations</span><strong id="metricRelationships">—</strong></div><div><span>Sources</span><strong id="metricSources">—</strong></div><div><span>State</span><strong id="metricState">Waiting</strong></div></div>
-        <span class="metric-detail" id="metricStateDetail">Import a study to begin</span>
         <div class="capability-panel"><div class="capability-head"><span>CAPABILITIES</span><button id="capabilityInfoInspector">Details</button></div><div id="capabilityRows"></div></div>
       </aside>
     </main>
@@ -116,6 +112,16 @@
     <input id="contextInput" type="file" accept="application/json,.json" hidden />
     <div class="toast" id="toast" role="status"></div><div class="scrim hidden" id="scrim"></div>
 
+    <section class="gesture-console hidden" id="gestureConsole" aria-live="polite">
+      <header><div><span class="gesture-kicker">CAMERA</span><strong id="gestureStatus">Camera off</strong></div><div class="gesture-header-actions"><button class="gesture-preview-toggle" id="gesturePreviewToggle" aria-pressed="true">Hide preview</button><button id="gestureClose" aria-label="Turn off gesture camera">×</button></div></header>
+      <div class="gesture-preview"><video id="gestureVideo" autoplay muted playsinline aria-label="Gesture camera preview"></video><canvas id="gestureOverlay" aria-hidden="true"></canvas><span class="gesture-scanline"></span><span class="gesture-corner top-left"></span><span class="gesture-corner top-right"></span><span class="gesture-corner bottom-left"></span><span class="gesture-corner bottom-right"></span></div>
+      <div class="gesture-readout"><span id="gestureAction">Enable camera to control the workspace</span><b id="gestureHands">0 hands</b></div>
+      <div class="gesture-guide"><div class="gesture-guide-head"><strong>Gesture guide</strong><span>Keep your hand inside the frame</span></div><div class="gesture-guide-list"><div><b>Pinch + move</b><span>Rotate the view</span></div><div><b>Two pinches</b><span>Move apart / together · zoom</span></div><div><b>Two fists + drag</b><span>Down / up · scan layers</span></div><div><b>Point + hold</b><span>Select a structure</span></div><div><b>Peace sign</b><span>Cycle anatomy · swipe views</span></div><div><b>Closed fist</b><span>Hold to fit the view</span></div><div><b>Open palm + hold</b><span>Speak a voice command · no model movement</span></div></div></div>
+      <button class="gesture-enable" id="gestureEnable">Enable camera</button>
+    </section>
+
+    <section class="gesture-scan-preview hidden" id="gestureScanPreview" aria-live="polite"><header><div><span>SCAN PREVIEW</span><strong id="gestureScanSlice">Slice —</strong></div><button id="gestureScanClose" aria-label="Close scan preview">×</button></header><div class="gesture-scan-image"><img id="gestureScanImage" alt="Axial scan slice preview" /></div><small>Two fists · drag down / up</small></section>
+
     <section class="sheet hidden" id="compileSheet" aria-live="polite"><header><h2>Building PatientModel</h2><button data-close="compileSheet" aria-label="Close">×</button></header><div class="compile-heading"><div class="compile-symbol"><i></i><i></i><i></i></div><div><p id="compileMessage">Preparing study…</p></div><strong id="compileProgressText">0%</strong></div><div class="compile-track"><span id="compileProgress"></span></div><div class="compile-stages" id="compileStageList"></div></section>
     <section class="sheet wide hidden" id="sourceSheet"><header><h2 id="sourceTitle">Evidence</h2><button data-close="sourceSheet" aria-label="Close">×</button></header><div class="source-metadata" id="sourceMeta">—</div><blockquote id="sourceExcerpt">No source selected.</blockquote><div class="binding-detail" id="sourceBinding">—</div></section>
     <section class="sheet wide hidden" id="aiSheet"><header><h2>Query the PatientModel</h2><button data-close="aiSheet" aria-label="Close">×</button></header><p class="sheet-lede">Answers use spatial, temporal, and provenance tools.</p><div class="ai-thread" id="aiThread"><div class="ai-message system"><p>Select an object, then ask about neighbors, change, or evidence.</p></div></div><div class="suggestions"><button data-query="What is closest to this object?">Closest structure</button><button data-query="What changed since the prior study?">Calculated change</button><button data-query="Show the evidence for this object">Evidence</button></div><form class="ai-form" id="aiForm"><input id="aiInput" placeholder="Ask about the selected object" autocomplete="off" /><button class="primary-action">Run query</button></form></section>
@@ -128,6 +134,7 @@
     <section class="sheet wide hidden" id="historySheet"><header><h2>PatientModel history</h2><button data-close="historySheet" aria-label="Close">×</button></header><p class="sheet-lede">Immutable local snapshots make review, context, and temporal changes traceable across the model lifecycle.</p><div class="revision-list" id="revisionList"></div><div class="revision-detail" id="revisionDetail"><span class="result-placeholder">Select a revision to inspect its recorded state.</span></div><div class="audit-heading">Audit trail</div><div class="audit-list" id="auditList"><span class="result-placeholder">No recorded actions.</span></div></section>
   </div>
   <script src="/assets/mesh-view.js"></script>
+  <script src="/assets/gesture-camera.js"></script>
   <script src="/assets/app.js"></script>
 </body>
 </html>

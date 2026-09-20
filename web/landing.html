@@ -3,67 +3,93 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta name="theme-color" content="#f7f8f6" />
-  <meta name="description" content="Phasemed turns medical imaging into a persistent, queryable patient model." />
-  <title>Phasemed — Imaging, compiled</title>
-  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='9' fill='%23f7f8f6'/%3E%3Crect x='7' y='9' width='15' height='6' rx='3' transform='rotate(-45 7 9)' fill='%231d1d1f'/%3E%3Crect x='13' y='16' width='15' height='6' rx='3' transform='rotate(-45 13 16)' fill='%231d1d1f'/%3E%3C/svg%3E" />
-  <link rel="stylesheet" href="/assets/landing.css" />
+  <meta name="theme-color" content="#f4f7f5" />
+  <meta name="description" content="Phasmed turns a DICOM study into a patient model you can measure, query and follow over time." />
+  <title>Phasmed — Imaging, compiled</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='9' fill='%2306090a'/%3E%3Crect x='7' y='9' width='15' height='6' rx='3' transform='rotate(-45 7 9)' fill='%237fe3d0'/%3E%3Crect x='13' y='16' width='15' height='6' rx='3' transform='rotate(-45 13 16)' fill='%237fe3d0'/%3E%3C/svg%3E" />
+  <link rel="stylesheet" href="/assets/landing.css?v=420d62a" />
 </head>
 <body>
-  <div class="landing" data-current="0">
-    <header class="landing-nav">
-      <a class="landing-brand" href="/" aria-label="Phasemed home"><span class="brand-mark" aria-hidden="true"><i></i><i></i></span><span>Phasemed</span></a>
-      <nav aria-label="Primary navigation">
-        <a href="#platform">Platform</a>
-        <a href="#reasoning">Reasoning</a>
-        <a href="#models">Model lab</a>
-      </nav>
-      <a class="nav-workstation" href="/workspace">Open workstation <span aria-hidden="true">↗</span></a>
-    </header>
+  <!-- The scene is the patient model itself, rendered live from the local API. -->
+  <canvas class="scene" id="scene" aria-hidden="true"></canvas>
+  <canvas class="scene-overlay" id="sceneOverlay" aria-hidden="true"></canvas>
+  <div class="scrim" aria-hidden="true"></div>
+  <div class="grain" aria-hidden="true"></div>
 
-    <main class="landing-track" id="landingTrack">
-      <section class="landing-section hero-section" id="top" data-slide="0" aria-labelledby="heroTitle">
-        <div class="section-index">01 <span>/ 05</span></div>
-        <div class="hero-copy">
-          <p class="kicker">A clinical imaging system</p>
-          <h1 id="heroTitle">Imaging, <em>compiled.</em></h1>
-          <p class="hero-lede">Phasemed converts DICOM studies into a persistent patient model: spatially structured, longitudinally aware, and ready for computation.</p>
-          <div class="hero-actions"><a class="button dark" href="/workspace">Open the workstation <span aria-hidden="true">↗</span></a><a class="text-link" href="#platform">See the system <span aria-hidden="true">↓</span></a></div>
+  <header class="nav" id="nav">
+    <a class="brand" href="/" aria-label="Phasmed home"><span class="brand-mark" aria-hidden="true"><i></i><i></i></span>Phasmed</a>
+    <nav aria-label="Sections">
+      <a href="#how">How</a>
+      <a href="#change">Change</a>
+      <a href="#surfaces">Surfaces</a>
+      <a href="#lab">Model lab</a>
+      <a href="/trial-studio">Trial Studio</a>
+    </nav>
+    <a class="nav-cta" href="/workspace">Open workstation <span aria-hidden="true">↗</span></a>
+  </header>
+
+  <main>
+    <section class="hero" id="top" data-scene="hero" aria-labelledby="heroTitle">
+      <h1 id="heroTitle"><span class="rise" style="--d:0">Imaging,</span> <em class="rise" style="--d:1">compiled.</em></h1>
+      <p class="lede rise" style="--d:2">Phasmed turns a DICOM study into a patient model — objects you can measure, query and follow over time.</p>
+      <div class="actions rise" style="--d:3">
+        <a class="button" href="/workspace">Open workstation <span aria-hidden="true">↗</span></a>
+        <a class="quiet-link" href="#how">How it works <span aria-hidden="true">↓</span></a>
+      </div>
+    </section>
+
+    <section class="chapter" id="how" aria-labelledby="howTitle">
+      <header class="chapter-head" data-scene="how" data-reveal>
+        <h2 id="howTitle">The study is the input. <em>The model is the product.</em></h2>
+      </header>
+      <ol class="steps">
+        <li data-scene="sweep" data-reveal><span class="step-no">01</span><h3>Index</h3><p>DICOM in. Validated, indexed and kept on your machine.</p></li>
+        <li data-scene="organs" data-reveal><span class="step-no">02</span><h3>Compile</h3><p>Volumes and segmentations become objects with real geometry.</p></li>
+        <li data-scene="relations" data-reveal><span class="step-no">03</span><h3>Relate</h3><p>Distance, containment and adjacency — computed, never guessed.</p></li>
+      </ol>
+    </section>
+
+    <section class="chapter" id="change" data-scene="finding" aria-labelledby="changeTitle">
+      <div data-reveal>
+        <p class="eyebrow">02 — Change</p>
+        <h2 id="changeTitle">Growth is a <em>number.</em></h2>
+        <p class="body">Follow-ups link to priors object by object. Every delta is measured, and traceable to its source images.</p>
+        <div class="stat" id="changeStat" hidden>
+          <strong id="statDelta">—</strong>
+          <dl>
+            <div><dt>Volume</dt><dd><span id="statFrom">—</span> → <span id="statTo">—</span> mm³</dd></div>
+            <div><dt>Interval</dt><dd id="statSpan">—</dd></div>
+            <div><dt>Object</dt><dd id="statObject">—</dd></div>
+          </dl>
         </div>
-        <div class="hero-diagram" aria-label="Phasemed compilation pipeline">
-          <div class="diagram-canvas"><div class="scan-sheet"><span>CT</span><i></i><i></i><i></i><small>source study</small></div><div class="diagram-line line-one"></div><div class="compile-node"><span class="node-glyph"><i></i><i></i><i></i></span><strong>compile</strong><small>geometry · context · time</small></div><div class="diagram-line line-two"></div><div class="model-card"><div class="model-card-head"><span>PatientModel</span><b>v1</b></div><div class="model-objects"><i class="object-anatomy"></i><i class="object-finding"></i><i class="object-vessel"></i><i class="object-anatomy"></i></div><div class="model-card-foot"><span>objects</span><span>relations</span><span>evidence</span></div></div><span class="axis axis-x">x</span><span class="axis axis-y">y</span><span class="axis axis-z">z</span></div>
-          <p class="diagram-caption">One source of truth for every view, measurement, and model.</p>
-        </div>
-        <div class="space-hint"><span>space</span><small>next section</small></div>
-      </section>
+      </div>
+    </section>
 
-      <section class="landing-section platform-section" id="platform" data-slide="1" aria-labelledby="platformTitle">
-        <div class="section-index">02 <span>/ 05</span></div>
-        <div class="section-heading"><p class="kicker">The platform</p><h2 id="platformTitle">The study is not the product.<br /><em>The model is.</em></h2><p>Traditional viewers organize pixels around a scan. Phasemed organizes the scan around the patient—then makes every derived result inspectable.</p></div>
-        <div class="platform-flow" aria-label="Study to model workflow"><article><span class="flow-number">01</span><h3>Ingest</h3><p>DICOM files, folders, ZIPs, DICOMweb, or C-STORE enter one immutable workspace.</p><div class="flow-detail"><b>source</b><span>series · frames · metadata</span></div></article><div class="flow-connector"></div><article><span class="flow-number">02</span><h3>Compile</h3><p>Volumes, segmentations, meshes, measurements, and spatial relationships become typed objects.</p><div class="flow-detail"><b>compiler</b><span>geometry · provenance · review</span></div></article><div class="flow-connector"></div><article><span class="flow-number">03</span><h3>Reason</h3><p>Humans, deterministic tools, and algorithms query the same patient-level structure.</p><div class="flow-detail"><b>outputs</b><span>viewer · graph · model · export</span></div></article></div>
-        <div class="bottom-note"><span>Every output points back to its source.</span><span>Every object can be reviewed.</span></div>
-      </section>
+    <section class="chapter" id="surfaces" data-scene="surfaces" aria-labelledby="surfacesTitle">
+      <div data-reveal>
+        <p class="eyebrow">03 — Surfaces</p>
+        <h2 id="surfacesTitle">One model. <em>Five ways in.</em></h2>
+      </div>
+      <ul class="surfaces" id="surfaceList" data-reveal>
+        <li data-preview="sweep" tabindex="0"><span>01</span><b>Review</b><p>Slices stay linked to objects and coordinates.</p></li>
+        <li data-preview="finding" tabindex="0"><span>02</span><b>Change</b><p>Priors, overlays and differences, measured.</p></li>
+        <li data-preview="relations" tabindex="0"><span>03</span><b>Query</b><p>Deterministic answers, for clinicians and AI alike.</p></li>
+        <li data-preview="holo" tabindex="0"><span>04</span><b>Hologram</b><p>A four-view render with local voice control.</p></li>
+        <li data-preview="organs" tabindex="0"><span>05</span><b>Export</b><p>JSON and JSON-LD for whatever comes next.</p></li>
+      </ul>
+    </section>
 
-      <section class="landing-section reasoning-section" id="reasoning" data-slide="2" aria-labelledby="reasoningTitle">
-        <div class="section-index">03 <span>/ 05</span></div>
-        <div class="reasoning-layout"><div class="section-heading"><p class="kicker">Spatial reasoning</p><h2 id="reasoningTitle">A data structure for anatomy.</h2><p>Objects are not annotations floating above an image. They are typed, related, measurable entities with geometry, evidence, and temporal identity.</p><a class="text-link" href="/workspace">Inspect a patient model <span aria-hidden="true">↗</span></a></div><div class="graph-panel"><div class="graph-label">OBJECT GRAPH <span>patient / current study</span></div><div class="graph-map"><div class="graph-object object-a"><span></span><strong>Left lung</strong><small>anatomy</small></div><div class="graph-object object-b"><span></span><strong>Nodule 01</strong><small>finding</small></div><div class="graph-object object-c"><span></span><strong>Prior nodule</strong><small>temporal</small></div><div class="graph-object object-d"><span></span><strong>CT series</strong><small>source</small></div><svg viewBox="0 0 620 390" role="img" aria-label="Connected patient object graph"><path d="M170 105 C255 105 260 165 315 165"/><path d="M395 165 C455 165 455 250 475 280"/><path d="M180 300 C260 300 250 205 315 180"/><path d="M395 165 C405 110 410 85 460 82"/></svg><div class="graph-relationship rel-one">inside</div><div class="graph-relationship rel-two">changed_from</div><div class="graph-relationship rel-three">supported_by</div><div class="graph-relationship rel-four">source</div></div><div class="graph-footer"><span><i class="dot teal"></i>geometry</span><span><i class="dot amber"></i>finding</span><span><i class="dot violet"></i>evidence</span><span><i class="dot gray"></i>time</span></div></div></div>
-      </section>
+    <section class="chapter closing" id="lab" data-scene="rest" aria-labelledby="labTitle">
+      <div data-reveal>
+        <p class="eyebrow">Model lab</p>
+        <h2 id="labTitle">Patient models in. <em>Useful models out.</em></h2>
+        <p class="body">Train and validate on geometry features. Labels stay yours; every prediction shows what drove it.</p>
+        <div class="actions"><a class="button large" href="/workspace">Open workstation <span aria-hidden="true">↗</span></a><a class="quiet-link" href="/trial-studio">Run a trial simulation <span aria-hidden="true">↗</span></a></div>
+      </div>
+    </section>
+  </main>
 
-      <section class="landing-section intelligence-section" id="intelligence" data-slide="3" aria-labelledby="intelligenceTitle">
-        <div class="section-index">04 <span>/ 05</span></div>
-        <div class="section-heading"><p class="kicker">One model, many surfaces</p><h2 id="intelligenceTitle">The interface changes.<br /><em>The patient model does not.</em></h2><p>Review a slice, select a finding, compare a prior study, calculate a trajectory, ask a structured question, or render the same objects spatially.</p></div>
-        <div class="surface-grid"><article class="surface-card large"><div class="surface-top"><span>01</span><b>Review</b></div><div class="surface-viewport"><div class="mini-slice"><i></i><i></i><i></i></div><div class="crosshair"></div><span class="slice-label">AXIAL · 128 / 246</span></div><p>Source images remain linked to model objects and coordinates.</p></article><article class="surface-card"><div class="surface-top"><span>02</span><b>Change</b></div><div class="change-bars"><i style="height:42%"></i><i style="height:58%"></i><i style="height:71%"></i><i style="height:88%"></i><i style="height:64%"></i><i style="height:94%"></i></div><strong>+18.4%</strong><p>Temporal links carry measured change, not just visual comparison.</p></article><article class="surface-card"><div class="surface-top"><span>03</span><b>Query</b></div><div class="query-box"><span>closest structure</span><strong>Left pulmonary artery</strong><small>distance · 7.8 mm</small></div><p>Deterministic tools give AI and clinicians the same answer surface.</p></article><article class="surface-card"><div class="surface-top"><span>04</span><b>Export</b></div><div class="export-lines"><span>PatientModel JSON</span><span>JSON-LD graph</span><span>Context bundle</span></div><p>The compiled structure can move into downstream applications.</p></article></div>
-      </section>
-
-      <section class="landing-section models-section" id="models" data-slide="4" aria-labelledby="modelsTitle">
-        <div class="section-index">05 <span>/ 05</span></div>
-        <div class="models-layout"><div class="section-heading"><p class="kicker">Model lab</p><h2 id="modelsTitle">From patient models<br /><em>to useful models.</em></h2><p>Clinical labels stay with the people who own them. Phasemed turns compiled PatientModels into reproducible feature tables, transparent baselines, validation metrics, and batch predictions.</p><a class="button dark" href="/workspace">Open model lab <span aria-hidden="true">↗</span></a></div><div class="algorithm-panel"><div class="algorithm-head"><span>TRAINING RUN</span><strong>Finding presence</strong><small>logistic regression · validated</small></div><div class="algorithm-chart"><div class="chart-axis"><span>1.0</span><span>0.5</span><span>0.0</span></div><svg viewBox="0 0 470 220" preserveAspectRatio="none" aria-label="Model performance chart"><path class="chart-grid" d="M0 20H470 M0 110H470 M0 200H470"/><path class="chart-line muted" d="M0 174 C55 160 85 168 120 143 S185 128 225 116 S295 96 330 103 S400 67 470 42"/><path class="chart-line bright" d="M0 190 C50 175 92 174 120 156 S178 150 222 126 S286 118 330 84 S402 65 470 26"/><circle cx="330" cy="84" r="4"/><circle cx="470" cy="26" r="4"/></svg><div class="chart-labels"><span>fit</span><span>validation</span></div></div><div class="algorithm-stats"><div><span>features</span><strong>19</strong></div><div><span>training</span><strong>80%</strong></div><div><span>validation</span><strong>20%</strong></div><div><span>provenance</span><strong>saved</strong></div></div></div></div><div class="closing-line"><span>Built for inspection.</span><span>Designed for extension.</span><span>Grounded in the patient.</span></div>
-      </section>
-    </main>
-
-    <div class="slide-progress" aria-label="Landing page sections"><button class="active" data-jump="0" aria-label="Go to introduction"></button><button data-jump="1" aria-label="Go to platform"></button><button data-jump="2" aria-label="Go to spatial reasoning"></button><button data-jump="3" aria-label="Go to surfaces"></button><button data-jump="4" aria-label="Go to model lab"></button></div>
-    <div class="slide-counter"><span id="slideCurrent">01</span><i></i><span>05</span></div>
-  </div>
-  <script src="/assets/landing.js"></script>
+  <script src="/assets/mesh-view.js?v=420d62a"></script>
+  <script src="/assets/landing.js?v=420d62a"></script>
 </body>
 </html>
