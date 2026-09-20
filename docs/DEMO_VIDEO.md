@@ -1,8 +1,8 @@
 # Demo video: shot list and narration
 
 Target length: 100 seconds (hard ceiling 2 minutes). One take per shot, cut together;
-no live seeding on camera. The shots follow the slide deck's middle section (See it →
-Trust it → Track it → Ask it → Walk around it), so the video and the deck tell the
+no live seeding on camera. The shots follow the slide deck's middle section (3D model →
+Review → Change → Chat → Hologram), so the video and the deck tell the
 same story with the same numbers.
 
 ## Set up once
