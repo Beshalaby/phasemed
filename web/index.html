@@ -9,7 +9,7 @@
   <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin />
   <link rel="preconnect" href="https://storage.googleapis.com" crossorigin />
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='9' fill='%2306090a'/%3E%3Crect x='7' y='9' width='15' height='6' rx='3' transform='rotate(-45 7 9)' fill='%237fe3d0'/%3E%3Crect x='13' y='16' width='15' height='6' rx='3' transform='rotate(-45 13 16)' fill='%237fe3d0'/%3E%3C/svg%3E" />
-  <link rel="stylesheet" href="/assets/styles.css" />
+  <link rel="stylesheet" href="/assets/styles.css?v=gesture-preview-1" />
 </head>
 <body>
   <div class="app-shell">
@@ -94,6 +94,14 @@
 
         <section class="mode-panel hologram-view" id="hologramView"><div class="hologram-frame"><canvas id="hologramCanvas" aria-label="Four-direction Pepper's Ghost hologram preview"></canvas><div class="hologram-caption hidden" id="hologramCaption" role="status" aria-live="polite"></div></div><button class="hologram-exit" id="hologramExit" aria-label="Exit hologram view">× <span>Exit</span></button><div class="hologram-controls"><button id="hologramVoice" class="voice-button" aria-label="Hold to speak a question or command">◉ <span>Hold space to speak</span></button><button id="hologramGesture" class="gesture-button" aria-label="Toggle gesture camera">✦ <span>Camera</span></button><button id="hologramAnatomy" aria-label="Cycle anatomy filter">◒ <span>Lungs</span></button><button id="hologramSpin" class="active" aria-pressed="true" aria-label="Toggle auto rotation">◐ <span>Pause</span></button><button id="hologramZoomOut" aria-label="Zoom out">−</button><button id="hologramZoomIn" aria-label="Zoom in">+</button><button id="hologramReset" aria-label="Reset hologram view">Reset</button><small id="hologramVoiceHint" aria-live="polite">hold space speak · drag rotate · scroll zoom</small></div></section>
 
+        <section class="gesture-console hidden" id="gestureConsole" aria-live="polite">
+          <header><div><span class="gesture-kicker">CAMERA</span><strong id="gestureStatus">Camera off</strong></div><div class="gesture-header-actions"><button class="gesture-preview-toggle" id="gesturePreviewToggle" aria-pressed="true">Hide preview</button><button id="gestureClose" aria-label="Turn off gesture camera">×</button></div></header>
+          <div class="gesture-preview"><video id="gestureVideo" autoplay muted playsinline aria-label="Gesture camera preview"></video><canvas id="gestureOverlay" aria-hidden="true"></canvas><span class="gesture-scanline"></span><span class="gesture-corner top-left"></span><span class="gesture-corner top-right"></span><span class="gesture-corner bottom-left"></span><span class="gesture-corner bottom-right"></span></div>
+          <div class="gesture-readout"><span id="gestureAction">Enable camera to control the workspace</span><b id="gestureHands">0 hands</b></div>
+          <div class="gesture-guide"><div class="gesture-guide-head"><strong>Gesture guide</strong><span>Keep your hand inside the frame</span></div><div class="gesture-guide-list"><div><b>Pinch + move</b><span>Rotate the view</span></div><div><b>Two pinches</b><span>Move apart / together · zoom</span></div><div><b>Two fists + drag</b><span>Down / up · scan layers</span></div><div><b>Point + hold</b><span>Select a structure</span></div><div><b>Peace sign</b><span>Cycle anatomy · swipe views</span></div><div><b>Closed fist</b><span>Hold to fit the view</span></div><div><b>Open palm + hold</b><span>Speak a voice command · no model movement</span></div></div></div>
+          <button class="gesture-enable" id="gestureEnable">Enable camera</button>
+        </section>
+
       </section>
 
       <aside class="right-rail" id="rightRail">
@@ -118,14 +126,6 @@
     <input id="folderInput" type="file" webkitdirectory directory multiple hidden />
     <input id="contextInput" type="file" accept="application/json,.json" hidden />
     <div class="toast" id="toast" role="status"></div><div class="scrim hidden" id="scrim"></div>
-
-    <section class="gesture-console hidden" id="gestureConsole" aria-live="polite">
-      <header><div><span class="gesture-kicker">CAMERA</span><strong id="gestureStatus">Camera off</strong></div><div class="gesture-header-actions"><button class="gesture-preview-toggle" id="gesturePreviewToggle" aria-pressed="true">Hide preview</button><button id="gestureClose" aria-label="Turn off gesture camera">×</button></div></header>
-      <div class="gesture-preview"><video id="gestureVideo" autoplay muted playsinline aria-label="Gesture camera preview"></video><canvas id="gestureOverlay" aria-hidden="true"></canvas><span class="gesture-scanline"></span><span class="gesture-corner top-left"></span><span class="gesture-corner top-right"></span><span class="gesture-corner bottom-left"></span><span class="gesture-corner bottom-right"></span></div>
-      <div class="gesture-readout"><span id="gestureAction">Enable camera to control the workspace</span><b id="gestureHands">0 hands</b></div>
-      <div class="gesture-guide"><div class="gesture-guide-head"><strong>Gesture guide</strong><span>Keep your hand inside the frame</span></div><div class="gesture-guide-list"><div><b>Pinch + move</b><span>Rotate the view</span></div><div><b>Two pinches</b><span>Move apart / together · zoom</span></div><div><b>Two fists + drag</b><span>Down / up · scan layers</span></div><div><b>Point + hold</b><span>Select a structure</span></div><div><b>Peace sign</b><span>Cycle anatomy · swipe views</span></div><div><b>Closed fist</b><span>Hold to fit the view</span></div><div><b>Open palm + hold</b><span>Speak a voice command · no model movement</span></div></div></div>
-      <button class="gesture-enable" id="gestureEnable">Enable camera</button>
-    </section>
 
     <section class="gesture-scan-preview hidden" id="gestureScanPreview" aria-live="polite"><header><div><span>SCAN PREVIEW</span><strong id="gestureScanSlice">Slice —</strong></div><button id="gestureScanClose" aria-label="Close scan preview">×</button></header><div class="gesture-scan-image"><img id="gestureScanImage" alt="Axial scan slice preview" /></div><small>Two fists · drag down / up</small></section>
 
