@@ -19,7 +19,7 @@ void main() {
   const canvas = document.createElement("canvas");
   const cache = new Map(); // `${modelId}:${objectId}` -> { state, vao, buffers, count, url, faces }
   const queue = [];
-  let gl = null, program = null, uniforms = null, loading = false;
+  let gl = null, program = null, uniforms = null;
 
   function init() {
     gl = canvas.getContext("webgl2", { antialias: true, alpha: true, premultipliedAlpha: true });
@@ -63,15 +63,19 @@ void main() {
     Object.assign(entry, { state: "ready", vao, buffers, count: mesh.idx.length });
   }
 
-  async function pump() {
-    if (loading) return; loading = true;
-    while (queue.length) {
-      queue.sort((a, b) => a.faces - b.faces); const entry = queue.shift(); // small meshes first so the scene fills in progressively
-      try { const response = await fetch(entry.url); if (!response.ok) throw new Error(String(response.status)); const mesh = parseObj(await response.text()); if (!mesh.idx.length) throw new Error("empty mesh"); if (gl && cache.get(entry.key) === entry) upload(entry, mesh); }
-      catch { entry.state = "failed"; }
-      api.onReady?.();
+  // Meshes load a few at a time, smallest first, so the scene fills in quickly instead of one request at a time.
+  const CONCURRENCY = 5;
+  let active = 0;
+  async function load(entry) {
+    try { const response = await fetch(entry.url); if (!response.ok) throw new Error(String(response.status)); const mesh = parseObj(await response.text()); if (!mesh.idx.length) throw new Error("empty mesh"); if (gl && cache.get(entry.key) === entry) upload(entry, mesh); }
+    catch (error) { entry.state = "failed"; console.warn(`Mesh could not be loaded (${error.message}): ${entry.url}`); }
+  }
+  function pump() {
+    while (active < CONCURRENCY && queue.length) {
+      queue.sort((a, b) => a.faces - b.faces); const entry = queue.shift();
+      active += 1;
+      load(entry).finally(() => { active -= 1; api.onReady?.(); pump(); });
     }
-    loading = false;
   }
 
   function release(entry) { if (!gl || entry.state !== "ready") return; gl.deleteVertexArray(entry.vao); entry.buffers.forEach((buffer) => gl.deleteBuffer(buffer)); }
@@ -88,7 +92,8 @@ void main() {
     },
     // Queues every mesh of a model so views that draw more objects than the current one (hologram) open without a load pause.
     warm(modelId, objects) { if (!modelId) return 0; let queued = 0; (objects || []).forEach((object) => { if (object?.type === "volume") return; const before = cache.size; api.ensure(modelId, object); if (cache.size !== before) queued += 1; }); return queued; },
-    pending() { return queue.length + (loading ? 1 : 0); },
+    pending() { return queue.length + active; },
+    failed() { let count = 0; for (const entry of cache.values()) if (entry.state === "failed") count += 1; return count; },
     ready(modelId, objectId) { return cache.get(api.key(modelId, objectId))?.state === "ready"; },
     setModel(modelIds) { const keep = modelIds.filter(Boolean); for (const [key, entry] of cache) if (!keep.some((id) => key.startsWith(`${id}:`))) { release(entry); cache.delete(key); } },
     // viewports: [{ x, y, w, h, mat, view }] in CSS px; items: [{ key, color: [r,g,b], alpha, depth }]

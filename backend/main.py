@@ -1479,7 +1479,7 @@ def series_mpr(study_id: str, series_uid: str, plane: str = Query("axial"), inde
         png, metadata = volume_plane_png(STUDY_ROOT / study_id, series, plane, index, window_center, window_width)
     except Exception as exc:
         raise HTTPException(422, f"MPR pixels could not be rendered: {exc}") from exc
-    return Response(content=png, media_type="image/png", headers={"Cache-Control": "no-store", "X-Phasemed-MPR": json.dumps(metadata)})
+    return Response(content=png, media_type="image/png", headers={"Cache-Control": "private, max-age=600", "X-Phasemed-MPR": json.dumps(metadata)})  # a study's pixels never change, so a rendered plane is safe to reuse
 
 
 @app.post("/api/models/{model_id}/spatial")
