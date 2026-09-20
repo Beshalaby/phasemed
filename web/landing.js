@@ -26,10 +26,11 @@ void main() { vec4 v = uView * vec4(aPos, 1.0); vN = mat3(uView) * aNrm; vZ = aP
 precision highp float; in vec3 vN; in float vZ; uniform vec3 uColor; uniform float uGain; uniform float uFill; uniform float uSweep; uniform float uSweepOn; out vec4 o;
 void main() {
   float facing = abs(normalize(vN).z);
-  float rim = pow(1.0 - facing, 2.4);                 // silhouettes glow, faces stay clear: a radiograph, not a shaded solid
-  float band = uSweepOn * exp(-pow((vZ - uSweep) / 3.2, 2.0));
-  vec3 c = uColor * (0.55 + rim) * uGain + vec3(0.62, 0.88, 0.82) * band * 0.55;
-  float opacity = clamp((uFill * 0.72 + rim * 0.5) * uGain + band * 0.25, 0.08, 0.7);
+  float rim = pow(1.0 - facing, 2.4);                 // silhouettes read as ink lines, faces as a light wash
+  float band = clamp(uSweepOn * exp(-pow((vZ - uSweep) / 3.2, 2.0)), 0.0, 1.0);
+  // On a light page emphasis is ink, not brightness: gain drives opacity and never lightens the colour.
+  vec3 c = mix(uColor * (1.0 - 0.3 * rim), vec3(0.0, 0.5, 0.43), band);
+  float opacity = max(clamp((uFill + 0.1 + rim * 0.62) * uGain, 0.0, 0.88), band * 0.85);
   o = vec4(c, opacity);
 }`;
   const shader = (type, source) => { const s = gl.createShader(type); gl.shaderSource(s, source); gl.compileShader(s); if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s)); return s; };
@@ -60,13 +61,12 @@ void main() {
   let live = null;         // { change: {...} } when real measurements are available
   let mode = "hero", preview = null, modeSince = 0, focusIndex = 0;
   const cam = { yaw: 0.5, pitch: 0.1, dist: 900, centre: [0, 0, 150], shift: 0.3 };
-  const aim = { pitch: 0.1, dist: 900, centre: [0, 0, 150], shift: 0.3, lift: 0 };
   cam.lift = 0;
   const pointer = { x: 0, y: 0 };
 
   function setScene(list, newBounds) {
     objects = list.map((item) => ({ gain: 0, target: 0, ...item, mesh: upload(item.mesh) }));
-    bounds = newBounds; cam.centre = [...bounds.centre]; aim.centre = [...bounds.centre]; cam.dist = aim.dist = fitDistance(1); applyMode(true);
+    bounds = newBounds; applyMode(true); Object.assign(cam, scrollPose());  // new geometry: snap to where the scroll position says, no fly-in
   }
   const fitDistance = (scale) => bounds.radius / Math.tan(FOV / 2) * 1.12 / scale;
   const anatomy = () => objects.filter((item) => item.kind === "anatomy");
@@ -78,23 +78,44 @@ void main() {
   }
   const nearest = (from, count) => anatomy().filter((item) => item !== from).map((item) => ({ item, mm: dist3(item.centroid, from.centroid) })).sort((a, b) => a.mm - b.mm).slice(0, count);
 
+  // Where the model sits for a scene. Pure, so the frame loop can blend two scenes by scroll position.
+  function poseFor(name) {
+    const narrow = innerWidth < 900; const lesion = finding();
+    const pose = { centre: [...bounds.centre], dist: fitDistance(1), pitch: 0.1, shift: 0.24, lift: 0.02 };
+    if (name === "hero") Object.assign(pose, { dist: fitDistance(0.94), pitch: 0.04, shift: 0.3, lift: 0.04 });
+    if (name === "how") Object.assign(pose, { pitch: 0.18, shift: -0.28, lift: 0.13 });
+    if (name === "sweep") Object.assign(pose, { pitch: -0.08, shift: 0.28, lift: -0.1 });
+    if (name === "organs") Object.assign(pose, { dist: fitDistance(1.12), pitch: 0.2, shift: 0.3, lift: -0.04 });  // the steps list sits in the left column, so the model stays right
+    if (name === "relations") Object.assign(pose, { pitch: -0.05, shift: 0.18, lift: 0.16 });
+    if (name === "finding" && lesion) Object.assign(pose, { centre: [...lesion.centroid], dist: fitDistance(3.1), pitch: 0.16, shift: -0.3, lift: -0.1 });
+    if (name === "holo") Object.assign(pose, { pitch: 0.14, shift: 0, lift: 0 });
+    if (name === "surfaces") Object.assign(pose, { dist: fitDistance(1.12), pitch: 0.08, shift: 0.38, lift: 0.06 });
+    if (name === "rest") Object.assign(pose, { dist: fitDistance(1.08), shift: -0.3, lift: -0.02 });
+    if (narrow) Object.assign(pose, { shift: 0, lift: 0 });
+    return pose;
+  }
+  const blend = (a, b, t) => ({ pitch: a.pitch + (b.pitch - a.pitch) * t, dist: a.dist + (b.dist - a.dist) * t, shift: a.shift + (b.shift - a.shift) * t, lift: a.lift + (b.lift - a.lift) * t, centre: a.centre.map((value, i) => value + (b.centre[i] - value) * t) });
+  // The pose follows the scroll position: between two scene anchors it is a blend of their poses, so the
+  // model travels as the page is scrolled and rests when scrolling stops. It holds still around each anchor
+  // (where that section's text is centred) and does its travelling in the gap between them.
+  const sceneAnchors = [...document.querySelectorAll("main [data-scene]")];  // <body> carries data-scene too, for styling
+  function scrollPose() {
+    const focus = innerHeight / 2; let before = null, after = null;
+    for (const node of sceneAnchors) { const rect = node.getBoundingClientRect(); const centre = rect.top + rect.height / 2; if (centre <= focus) before = { node, centre }; else { after = { node, centre }; break; } }
+    if (!before || !after) return poseFor((before || after).node.dataset.scene);
+    const t = clamp(((focus - before.centre) / Math.max(1, after.centre - before.centre) - 0.08) / 0.84, 0, 1);
+    return blend(poseFor(before.node.dataset.scene), poseFor(after.node.dataset.scene), t * t * (3 - 2 * t));
+  }
+
+  // Which objects are lit is discrete (it changes what the scene is showing), so it stays tied to the active section.
   function applyMode(instant = false) {
     const active = preview || mode; const narrow = innerWidth < 900; const lesion = finding();
-    aim.centre = [...bounds.centre]; aim.dist = fitDistance(1); aim.pitch = 0.1; aim.shift = narrow ? 0 : 0.24; aim.lift = narrow ? 0 : 0.02;
-    if (active === "hero") { aim.dist = fitDistance(0.94); aim.pitch = 0.04; aim.shift = narrow ? 0 : 0.3; aim.lift = narrow ? 0 : 0.04; }
-    if (active === "how") { aim.pitch = 0.18; aim.shift = narrow ? 0 : -0.28; aim.lift = narrow ? 0 : 0.13; }
     objects.forEach((item) => { item.target = item.kind === "prior" ? 0 : item.kind === "finding" ? 1.5 : 0.5; });
-    if (active === "sweep") { aim.pitch = -0.08; aim.shift = narrow ? 0 : 0.28; aim.lift = narrow ? 0 : -0.1; objects.forEach((item) => { item.target = item.kind === "prior" ? 0 : 0.2; }); }
-    if (active === "organs") { aim.dist = fitDistance(1.12); aim.pitch = 0.2; aim.shift = narrow ? 0 : -0.38; aim.lift = narrow ? 0 : -0.04; objects.forEach((item) => { item.target = item.kind === "prior" ? 0 : 0.1; }); }
-    if (active === "relations") { aim.pitch = -0.05; aim.shift = narrow ? 0 : 0.18; aim.lift = narrow ? 0 : 0.16; const hub = lesion || anatomy()[0]; const near = hub ? relationsOf(hub).map((entry) => entry.item) : []; objects.forEach((item) => { item.target = item === hub ? 1.8 : near.includes(item) ? 0.62 : item.kind === "prior" ? 0 : 0.07; }); }
-    if (active === "finding" && lesion) {
-      const host = anatomy().slice().sort((a, b) => dist3(a.centroid, lesion.centroid) - dist3(b.centroid, lesion.centroid))[0];
-      objects.forEach((item) => { item.target = item === lesion ? 1.25 : item.kind === "prior" ? 1.5 : item === host ? 0.3 : 0.05; });
-      aim.centre = [...lesion.centroid]; aim.dist = fitDistance(3.1); aim.pitch = 0.16; aim.shift = narrow ? 0 : -0.3; aim.lift = narrow ? 0 : -0.1;
-    }
-    if (active === "holo") { aim.shift = 0; aim.lift = 0; aim.pitch = 0.14; }
-    if (active === "surfaces") { aim.dist = fitDistance(1.12); aim.pitch = 0.08; aim.shift = narrow ? 0 : 0.38; aim.lift = narrow ? 0 : 0.06; }
-    if (active === "rest") { objects.forEach((item) => { item.target = item.kind === "prior" ? 0 : item.kind === "finding" ? 0.7 : 0.22; }); aim.dist = fitDistance(1.08); aim.shift = narrow ? 0 : -0.3; aim.lift = narrow ? 0 : -0.02; }
+    if (active === "sweep") objects.forEach((item) => { item.target = item.kind === "prior" ? 0 : 0.2; });
+    if (active === "organs") objects.forEach((item) => { item.target = item.kind === "prior" ? 0 : 0.1; });
+    if (active === "relations") { const hub = lesion || anatomy()[0]; const near = hub ? relationsOf(hub).map((entry) => entry.item) : []; objects.forEach((item) => { item.target = item === hub ? 1.8 : near.includes(item) ? 0.62 : item.kind === "prior" ? 0 : 0.07; }); }
+    if (active === "finding" && lesion) { const host = anatomy().slice().sort((a, b) => dist3(a.centroid, lesion.centroid) - dist3(b.centroid, lesion.centroid))[0]; objects.forEach((item) => { item.target = item === lesion ? 1.25 : item.kind === "prior" ? 1.5 : item === host ? 0.3 : 0.05; }); }
+    if (active === "rest") objects.forEach((item) => { item.target = item.kind === "prior" ? 0 : item.kind === "finding" ? 0.7 : 0.22; });
     if (narrow) objects.forEach((item) => { item.target *= 0.72; });
     if (instant) { objects.forEach((item) => { item.gain = 0; }); }
     modeSince = performance.now();
@@ -143,7 +164,7 @@ void main() {
   function frame(now) {
     const dt = Math.min(0.05, (now - last) / 1000); last = now; const { dpr, w, h } = resize(); const active = preview || mode; const narrow = innerWidth < 900;
     if (!reduced.matches) cam.yaw += dt * (active === "finding" ? 0.1 : 0.16);
-    const k = 1 - Math.exp(-dt * 3.2); cam.pitch += (aim.pitch - cam.pitch) * k; cam.dist += (aim.dist - cam.dist) * k; cam.shift += (aim.shift - cam.shift) * k; cam.lift += (aim.lift - cam.lift) * k;
+    const aim = preview ? poseFor(preview) : scrollPose(); const side = active === "holo" ? 1 : clamp((cam.shift + 0.12) / 0.24, 0, 1); const veil = side * side * (3 - 2 * side); document.body.style.setProperty("--veil-left", veil.toFixed(3)); document.body.style.setProperty("--veil-right", (1 - veil).toFixed(3)); const k = 1 - Math.exp(-dt * (preview ? 3.2 : 12)); cam.pitch += (aim.pitch - cam.pitch) * k; cam.dist += (aim.dist - cam.dist) * k; cam.shift += (aim.shift - cam.shift) * k; cam.lift += (aim.lift - cam.lift) * k;
     for (let i = 0; i < 3; i += 1) cam.centre[i] += (aim.centre[i] - cam.centre[i]) * k;
     objects.forEach((item) => { item.gain += (item.target - item.gain) * (1 - Math.exp(-dt * 4.5)); });
 
@@ -165,7 +186,7 @@ void main() {
       ink.strokeStyle = "rgba(8, 121, 107, .45)"; ink.lineWidth = dpr; ink.save(); ink.translate(cx, cy); ink.rotate(Math.PI / 4); ink.strokeRect(-cell * 0.11, -cell * 0.11, cell * 0.22, cell * 0.22); ink.restore();
       if (!narrow) label(cx, cy + cell * 1.62, "Hologram", "four views · hold space to speak", dpr, "center");
     } else {
-      const m = matrices(yaw, pitch, 0, w / h, cam.centre, cam.dist, active === "organs"); drawObjects(m, cam.shift, cam.lift, active === "sweep" ? 1 : 0, sweepZ);
+      const m = matrices(yaw, pitch, 0, w / h, cam.centre, cam.dist); drawObjects(m, cam.shift, cam.lift, active === "sweep" ? 1 : 0, sweepZ);
       if (!narrow && objects.length) annotate(active, m, w, h, dpr, sweepZ);
     }
     requestAnimationFrame(frame);
@@ -186,7 +207,7 @@ void main() {
 
   // ---------- scroll + hover drive the scene ----------
   const watcher = new IntersectionObserver((entries) => { entries.forEach((entry) => { if (entry.isIntersecting) setMode(entry.target.dataset.scene); }); }, { rootMargin: "-45% 0px -45% 0px" });
-  document.querySelectorAll("[data-scene]").forEach((node) => watcher.observe(node));
+  sceneAnchors.forEach((node) => watcher.observe(node));
   document.querySelectorAll("#surfaceList li").forEach((row) => {
     const on = () => { document.querySelectorAll("#surfaceList li").forEach((other) => other.classList.toggle("on", other === row)); preview = row.dataset.preview; focusIndex = 0; applyMode(); };
     const off = () => { row.classList.remove("on"); if (preview === row.dataset.preview) { preview = null; applyMode(); } };
