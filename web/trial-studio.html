@@ -22,7 +22,7 @@
         <div>
           <p class="eyebrow">DESIGN → SIMULATE → EXPLAIN</p>
           <h1>Make a trial design<br /><em>defensible before day one.</em></h1>
-          <p class="hero-lede">A local, reproducible workbench for early clinical-trial planning. Turn an estimand and a few assumptions into sample-size targets, simulated operating characteristics, and a report a statistician can review.</p>
+          <p class="hero-lede">A local, reproducible workbench for early clinical-trial planning. Turn an estimand and a few assumptions into enrollment targets, simulated operating characteristics, and a report a statistician can review.</p>
           <div class="hero-flags"><span><i></i> Seeded simulation</span><span><i></i> Synthetic data only</span><span><i></i> Open-source workflow</span></div>
         </div>
         <div class="hero-diagram" aria-label="Trial Studio workflow"><div class="diagram-step active"><b>01</b><span>Design</span><small>endpoint · arms · assumptions</small></div><div class="diagram-link"></div><div class="diagram-step"><b>02</b><span>Simulate</span><small>power · attrition · interim look</small></div><div class="diagram-link"></div><div class="diagram-step"><b>03</b><span>Handoff</span><small>report · cohort · provenance</small></div></div>
@@ -43,9 +43,9 @@
             <div class="form-row"><label>Dropout rate<input id="dropoutRate" type="number" min="0" max="0.5" step="0.01" value="0.10" /></label><label>Allocation ratio<input id="allocationRatio" type="number" min="0.25" max="4" step="0.25" value="1" /><small>Investigational : control</small></label></div>
             <div class="form-row"><label>Interim look<input id="interimFraction" type="number" min="0.4" max="0.9" step="0.05" value="0.50" /><small>Information fraction</small></label><label>Simulation runs<input id="simulations" type="number" min="100" max="100000" step="100" value="5000" /></label></div>
             <label>Random seed<input id="seed" type="number" min="0" max="4294967295" step="1" value="20260919" /></label>
-            <div class="form-actions"><button class="primary-button" type="submit">Run simulation <span>↗</span></button><button class="quiet-button" type="button" id="demoButton">Load demo</button></div>
+            <div class="form-actions"><button class="primary-button" type="submit">Run simulation <span>↗</span></button><button class="quiet-button" type="button" id="demoButton">Load example</button></div>
           </form>
-          <p class="privacy-note"><span>⌁</span> No patient data leaves this browser. Demo outputs are generated locally from declared assumptions.</p>
+          <p class="privacy-note"><span>⌁</span> No patient data leaves this browser. Example outputs are generated locally from declared assumptions.</p>
         </aside>
 
         <section class="results-column" aria-live="polite">

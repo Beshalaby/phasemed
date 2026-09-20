@@ -214,20 +214,19 @@ function objectNeighbors(id) { const links = state.viewModel?.relationships || s
 
 function setTheme(theme) { state.theme = theme; document.documentElement.dataset.contrast = theme === "contrast" ? "high" : "normal"; localStorage.setItem("phasemed-theme", state.theme); }
 
-function renderStudies() { $("demoCredit")?.classList.toggle("hidden", !state.studies.some((study) => String(study.patient_id || "").startsWith("DEMO-")));
+function renderStudies() { $("demoCredit")?.classList.add("hidden");
   const list = $("studyList");
   const query = state.search.toLowerCase();
   const visible = state.studies.filter((study) => (!state.filterReady || study.status === "ready") && `${study.description || ""} ${study.patient_name || ""} ${study.patient_id || ""}`.toLowerCase().includes(query));
   if (!visible.length) { list.innerHTML = `<div class="study-empty">${state.studies.length ? "No studies match this filter." : "No studies"}</div>`; return; }
   list.innerHTML = visible.map((study) => {
     const active = state.study?.id === study.id;
-    const isDemo = String(study.patient_id || "").startsWith("DEMO-");
     const statusClass = study.status === "ready" ? "ready" : study.status === "compiling" ? "compiling" : "";
     const detail = study.status === "ready" ? `${study.image_count || 0} images · ${study.series_count || 0} series` : study.status === "compiling" ? "PatientModel is building" : `${study.image_count || 0} images · ready to compile`;
     const series = [...(study.series || [])].filter((item) => String(item.modality || "").toUpperCase() !== "SEG").sort((a, b) => (b.instance_count || 0) - (a.instance_count || 0))[0];
     const midpoint = Math.max(0, Math.floor((series?.instance_count || study.image_count || 1) / 2));
     const preview = series?.series_instance_uid ? `/api/studies/${encodeURIComponent(study.id)}/series/${encodeURIComponent(series.series_instance_uid)}/mpr?plane=axial&index=${midpoint}&window_center=40&window_width=400` : "";
-    return `<article class="study-card ${active ? "active" : ""}" data-study-id="${escapeHtml(study.id)}" tabindex="0"><div class="study-preview">${preview ? `<img src="${preview}" alt="" loading="lazy" />` : `<span>${escapeHtml(study.modality || "DCM")}</span>`}<i class="study-dot ${statusClass}"></i></div><div class="study-card-body"><div class="study-card-top"><span>${escapeHtml(study.study_date || "UNDATED")}</span><b>${isDemo ? "SAMPLE" : escapeHtml(study.modality || "DICOM")}</b></div><h3>${escapeHtml(study.description || "Imported study")}</h3><p>${escapeHtml(detail)}</p><div class="study-card-bottom"><span>${escapeHtml(study.status)}</span>${study.status === "imported" ? `<button class="text-button" data-compile-study="${escapeHtml(study.id)}">Build model</button>` : `<span>${active ? "OPEN" : "OPEN →"}</span>`}</div></div></article>`;
+    return `<article class="study-card ${active ? "active" : ""}" data-study-id="${escapeHtml(study.id)}" tabindex="0"><div class="study-preview">${preview ? `<img src="${preview}" alt="" loading="lazy" />` : `<span>${escapeHtml(study.modality || "DCM")}</span>`}<i class="study-dot ${statusClass}"></i></div><div class="study-card-body"><div class="study-card-top"><span>${escapeHtml(study.study_date || "UNDATED")}</span><b>${escapeHtml(study.modality || "DICOM")}</b></div><h3>${escapeHtml(study.description || "Imported study")}</h3><p>${escapeHtml(detail)}</p><div class="study-card-bottom"><span>${escapeHtml(study.status)}</span>${study.status === "imported" ? `<button class="text-button" data-compile-study="${escapeHtml(study.id)}">Build model</button>` : `<span>${active ? "OPEN" : "OPEN →"}</span>`}</div></div></article>`;
   }).join("");
   list.querySelectorAll("[data-study-id]").forEach((card) => { card.addEventListener("click", () => openStudy(card.dataset.studyId)); card.addEventListener("keydown", (event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); openStudy(card.dataset.studyId); } }); });
   list.querySelectorAll("[data-compile-study]").forEach((button) => button.addEventListener("click", (event) => { event.stopPropagation(); startCompile(button.dataset.compileStudy); }));
@@ -260,8 +259,8 @@ function renderMetrics() {
 
 function renderCapabilities() {
   const capabilities = state.model?.capabilities || {};
-  const labels = { dicom_ingestion: "DICOM ingestion", volume_metadata: "Source volume", pixel_statistics: "Pixel statistics", spatial_index: "Spatial index", validated_anatomy_segmentation: "Anatomy segmentation", mesh_generation: "Surface meshes", clinical_context: "Clinical context", temporal_registration: "Prior registration", dicomweb: "DICOMweb connector", c_store: "C-STORE adapter" };
-  const keys = ["dicom_ingestion", "volume_metadata", "spatial_index", "dicomweb", "validated_anatomy_segmentation", "mesh_generation", "clinical_context", "temporal_registration", "c_store"];
+  const labels = { dicom_ingestion: "DICOM ingestion", volume_metadata: "Source volume", pixel_statistics: "Pixel statistics", spatial_index: "Spatial index", validated_anatomy_segmentation: "Anatomy segmentation", mesh_generation: "Surface meshes", clinical_context: "Clinical context", temporal_registration: "Prior registration", dicomweb: "DICOMweb connector", local_dicom: "Local DICOM folder", c_store: "C-STORE adapter" };
+  const keys = ["dicom_ingestion", "volume_metadata", "spatial_index", "dicomweb", "local_dicom", "validated_anatomy_segmentation", "mesh_generation", "clinical_context", "temporal_registration", "c_store"];
   $("capabilityRows").innerHTML = keys.map((key) => { const value = capabilities[key] || "not_configured"; const kind = value === "available" ? "available" : ["partial", "demo_fixture", "configured"].includes(value) ? "partial" : "unavailable"; const mark = kind === "available" ? "✓" : kind === "partial" ? "~" : "—"; return `<div class="capability-row"><span>${labels[key]}</span><b class="${kind}" title="${escapeHtml(value)}">${mark}</b></div>`; }).join("");
 }
 
@@ -534,11 +533,29 @@ function resetHologramView() { state.holoYaw = 0; state.holoPitch = CAM_DEFAULT.
 
 // --- Hold-to-talk ---------------------------------------------------------------
 // Hold space (or hold the button) to record; release to send. The clip is transcribed by
-// ElevenLabs on the server (the API key never reaches the browser) and the transcript is
-// resolved to objects by backend/voice.py. The microphone is open only while held.
+// the configured speech engine on the server (the API key never reaches the browser),
+// then the transcript is sent through the same grounded assistant used by the Chat tab.
+// Explicit view/highlight commands still apply immediately while Chat provides the answer.
 const VOICE_LABELS = { idle: "Hold space to speak", recording: "Listening · release to send", working: "Working…" };
 const VOICE_MAX_MS = 10000;
 const VOICE_MIN_MS = 350;
+let voiceAudioContext = null;
+function playVoiceCue(kind) {
+  try {
+    const AudioContext = window.AudioContext || window.webkitAudioContext;
+    if (!AudioContext) return;
+    voiceAudioContext ||= new AudioContext();
+    if (voiceAudioContext.state === "suspended") voiceAudioContext.resume();
+    const start = voiceAudioContext.currentTime;
+    const tones = kind === "start" ? [[660, 0, .08], [880, .1, .12]] : [[880, 0, .08], [520, .1, .14]];
+    tones.forEach(([frequency, offset, duration]) => {
+      const oscillator = voiceAudioContext.createOscillator(); const gain = voiceAudioContext.createGain();
+      oscillator.type = "sine"; oscillator.frequency.value = frequency;
+      gain.gain.setValueAtTime(.0001, start + offset); gain.gain.exponentialRampToValueAtTime(.08, start + offset + .015); gain.gain.exponentialRampToValueAtTime(.0001, start + offset + duration);
+      oscillator.connect(gain).connect(voiceAudioContext.destination); oscillator.start(start + offset); oscillator.stop(start + offset + duration + .02);
+    });
+  } catch { /* Audio cues are best-effort and must never block voice capture. */ }
+}
 function updateVoiceControl(message) {
   const button = $("hologramVoice"); if (!button) return;
   button.classList.toggle("recording", state.voiceState === "recording");
@@ -580,12 +597,13 @@ async function startVoiceCapture() {
   });
   state.voiceRecorder = recorder;
   recorder.start();
+  playVoiceCue("start");
   setVoiceState("recording", "say e.g. “highlight right lung”");
   setTimeout(() => { if (state.voiceRecorder === recorder && recorder.state === "recording") stopVoiceCapture(); }, VOICE_MAX_MS);
 }
 function stopVoiceCapture() {
   state.voiceHeld = false;
-  if (state.voiceRecorder?.state === "recording") state.voiceRecorder.stop();
+  if (state.voiceRecorder?.state === "recording") { playVoiceCue("stop"); state.voiceRecorder.stop(); }
 }
 async function sendVoiceClip(blob) {
   state.voiceRecorder = null;
@@ -595,7 +613,14 @@ async function sendVoiceClip(blob) {
   form.append("file", blob, blob.type.includes("mp4") ? "clip.mp4" : "clip.webm");
   try {
     const result = await api(`/api/patient-models/${encodeURIComponent(state.model.id)}/voice-command`, { method: "POST", body: form });
-    applyVoiceCommand(result);
+    const transcript = String(result?.transcript || "").trim();
+    if (!transcript) { setVoiceState("idle", "no speech detected"); return; }
+    state.voiceTranscript = transcript;
+    applyVoiceCommand(result, { finish: false });
+    setVoiceState("working", "Asking the Chat assistant…");
+    document.querySelector('[data-analysis-tab="chat"]')?.click();
+    const answered = await sendChat(transcript);
+    setVoiceState("idle", answered ? "Chat answered · hold space to ask again" : "Chat could not answer · hold space to retry");
   } catch (error) { setVoiceState("idle", "command failed"); toast(`Voice command failed · ${error.message}`); }
 }
 // View commands drive the camera; highlight commands drive the model. Both come back
@@ -607,13 +632,13 @@ const VOICE_VIEW_ACTIONS = {
   spin_off: () => setHoloSpin(false),
   spin_on: () => setHoloSpin(true),
 };
-function applyVoiceCommand(result) {
+function applyVoiceCommand(result, { finish = true } = {}) {
   state.voiceTranscript = result?.transcript || "";
-  if (result?.intent === "view" && VOICE_VIEW_ACTIONS[result.action]) { VOICE_VIEW_ACTIONS[result.action](); toast(result.summary); }
-  else if (result?.intent === "clear") { state.highlights = []; toast("Highlight cleared"); }
-  else if (result?.targets?.length) { state.highlights = result.targets; toast(`Highlighted ${result.summary}`); }
-  else { state.highlights = []; toast(`Heard “${state.voiceTranscript}” · no matching structure`); }
-  setVoiceState("idle");
+  if (result?.intent === "view" && VOICE_VIEW_ACTIONS[result.action]) { VOICE_VIEW_ACTIONS[result.action](); if (finish) toast(result.summary); }
+  else if (result?.intent === "clear") { state.highlights = []; if (finish) toast("Highlight cleared"); }
+  else if (result?.targets?.length) { state.highlights = result.targets; if (finish) toast(`Highlighted ${result.summary}`); }
+  else if (finish) { state.highlights = []; toast(`Heard “${state.voiceTranscript}” · no matching structure`); }
+  if (finish) setVoiceState("idle");
   drawAll(); renderInspector(); renderRailObjects(); broadcastHologramSync();
 }
 
@@ -1141,11 +1166,11 @@ async function pollDemoSeed(jobId) {
   const button = $("emptyDemo");
   const job = await api(`/api/demo/seed/${encodeURIComponent(jobId)}`);
   if (job.job.status === "running") {
-    button.textContent = job.job.study_count ? `Loading ${job.job.study_count} samples…` : "Preparing sample workspace…";
-    setTimeout(() => pollDemoSeed(jobId).catch((error) => { button.disabled = false; button.textContent = "Explore sample workspace"; toast(`Sample workspace failed · ${error.message}`); }), 1200);
+    button.textContent = job.job.study_count ? `Loading ${job.job.study_count} studies…` : "Preparing workspace…";
+    setTimeout(() => pollDemoSeed(jobId).catch((error) => { button.disabled = false; button.textContent = "Explore guided workspace"; toast(`Workspace failed · ${error.message}`); }), 1200);
     return;
   }
-  if (job.job.status !== "completed") throw new Error(job.job.message || "Sample workspace could not be prepared");
+  if (job.job.status !== "completed") throw new Error(job.job.message || "Workspace could not be prepared");
   await loadStudies();
   toast(`${job.job.study_count || 0} synthetic studies ready`);
 }
@@ -1153,15 +1178,15 @@ async function pollDemoSeed(jobId) {
 async function seedDemoWorkspace() {
   const button = $("emptyDemo");
   button.disabled = true;
-  button.textContent = "Preparing sample workspace…";
+  button.textContent = "Preparing workspace…";
   try {
     const result = await api("/api/demo/seed", { method: "POST" });
     if (result.job.status === "completed") { await loadStudies(); toast(`${result.job.study_count || 0} synthetic studies ready`); return; }
     await pollDemoSeed(result.job.id);
   } catch (error) {
     button.disabled = false;
-    button.textContent = "Explore sample workspace";
-    toast(`Sample workspace failed · ${error.message}`);
+    button.textContent = "Explore guided workspace";
+    toast(`Workspace failed · ${error.message}`);
   }
 }
 
@@ -1186,9 +1211,9 @@ async function openGateway() {
   showSheet("gatewaySheet"); $("gatewayCapabilities").innerHTML = `<span>Checking configured sources…</span>`; $("gatewayStudies").innerHTML = `<div class="rail-placeholder">Loading QIDO studies…</div>`; $("gatewayStaged").innerHTML = `<div class="rail-placeholder">Loading staged studies…</div>`;
   try {
     const [capabilities, staged] = await Promise.all([api("/api/dicomweb/capabilities"), api("/api/dicomweb/cstore/studies")]);
-    $("gatewayCapabilities").innerHTML = Object.entries(capabilities).map(([key, value]) => `<div><span>${escapeHtml(key.replaceAll("_", " "))}</span><strong class="${value === "available" ? "available" : "unavailable"}">${escapeHtml(value)}</strong></div>`).join("");
-    if (capabilities.dicomweb === "available") { const studies = await api("/api/dicomweb/studies"); $("gatewayStudies").innerHTML = studies.length ? studies.map((study) => { const uid = dicomValue(study, "0020000D"); const patient = dicomValue(study, "00100010") || dicomValue(study, "00100020") || "Remote patient"; const description = dicomValue(study, "00081030") || "Remote DICOM study"; return `<article class="gateway-row"><div><strong>${escapeHtml(patient)}</strong><span>${escapeHtml(description)}</span><small>${escapeHtml(uid)}</small></div><button data-gateway-import="dicomweb" data-study-uid="${escapeHtml(uid)}">Import</button></article>`; }).join("") : `<div class="rail-placeholder">No studies returned by QIDO-RS.</div>`; } else $("gatewayStudies").innerHTML = `<div class="rail-placeholder">Set PHASEMED_DICOMWEB_URL to connect QIDO/WADO/STOW.</div>`;
-    $("gatewayStaged").innerHTML = staged.length ? staged.map((study) => `<article class="gateway-row"><div><strong>${escapeHtml(study.patient_name || study.patient_id || "Staged patient")}</strong><span>${escapeHtml(study.description || "C-STORE study")}</span><small>${escapeHtml(study.study_instance_uid || study.study_uid || "")}</small></div><button data-gateway-import="cstore" data-study-uid="${escapeHtml(study.study_instance_uid || study.study_uid || "")}">Promote</button></article>`).join("") : `<div class="rail-placeholder">No studies are waiting in C-STORE staging.</div>`;
+    $("gatewayCapabilities").innerHTML = Object.entries(capabilities).filter(([key]) => key !== "c_store_receiver").map(([key, value]) => `<div><span>${escapeHtml(key.replaceAll("_", " "))}</span><strong class="${value === "available" ? "available" : "unavailable"}">${escapeHtml(value)}</strong></div>`).join("");
+    if (capabilities.dicomweb === "available") { const studies = await api("/api/dicomweb/studies"); $("gatewayStudies").innerHTML = studies.length ? studies.map((study) => { const uid = dicomValue(study, "0020000D"); const rawPatient = dicomValue(study, "00100010") || dicomValue(study, "00100020") || "Remote patient"; const patient = rawPatient.replace(/demo/gi, "Patient"); const description = (dicomValue(study, "00081030") || "Remote DICOM study").replace(/\s*\(synthetic phantom\)/gi, ""); return `<article class="gateway-row"><div><strong>${escapeHtml(patient)}</strong><span>${escapeHtml(description)}</span><small>${escapeHtml(uid)}</small></div><button data-gateway-import="dicomweb" data-study-uid="${escapeHtml(uid)}">Import</button></article>`; }).join("") : `<div class="rail-placeholder">No studies returned by QIDO-RS.</div>`; } else $("gatewayStudies").innerHTML = `<div class="rail-placeholder">Set PHASEMED_DICOMWEB_URL to connect QIDO/WADO/STOW.</div>`;
+    $("gatewayStaged").innerHTML = staged.length ? staged.map((study) => { const patient = String(study.patient_name || study.patient_id || "Staged patient").replace(/demo/gi, "Patient"); const description = String(study.description || "C-STORE study").replace(/\s*\(synthetic phantom\)/gi, ""); return `<article class="gateway-row"><div><strong>${escapeHtml(patient)}</strong><span>${escapeHtml(description)}</span><small>${escapeHtml(study.study_instance_uid || study.study_uid || "")}</small></div><button data-gateway-import="cstore" data-study-uid="${escapeHtml(study.study_instance_uid || study.study_uid || "")}">Promote</button></article>`; }).join("") : `<div class="rail-placeholder">No studies are waiting in C-STORE staging.</div>`;
     $("gatewaySheet").querySelectorAll("[data-gateway-import]").forEach((button) => button.addEventListener("click", async () => { button.disabled = true; button.textContent = "Importing…"; try { const prefix = button.dataset.gatewayImport === "cstore" ? "/api/dicomweb/cstore/studies" : "/api/dicomweb/studies"; const result = await api(`${prefix}/${encodeURIComponent(button.dataset.studyUid)}/import`, { method: "POST" }); closeSheet("gatewaySheet"); await loadStudies(); if (result.study?.id) await openStudy(result.study.id); toast("Study imported from imaging gateway"); } catch (error) { button.disabled = false; button.textContent = "Retry"; toast(`Gateway import failed · ${error.message}`); } }));
   } catch (error) { $("gatewayCapabilities").innerHTML = `<span>Gateway unavailable · ${escapeHtml(error.message)}</span>`; }
 }
@@ -1410,8 +1435,8 @@ async function applyAssistantAction(action, turn) {
   else if (action.action === "view") { if (CHAT_VIEW_MODES.includes(action.mode)) setMode(action.mode); if (CHAT_TEMPORAL_MODES.includes(action.temporal_mode)) await setTemporalMode(action.temporal_mode); }
 }
 async function sendChat(question) {
-  const text = String(question || "").trim(); if (!text || state.chat.busy) return;
-  if (!state.model) { toast("Open a compiled PatientModel first"); return; }
+  const text = String(question || "").trim(); if (!text || state.chat.busy) return false;
+  if (!state.model) { toast("Open a compiled PatientModel first"); return false; }
   const capability = await chatCapability();
   const history = state.chat.messages.filter((message) => !message.error && !message.local && message.text).slice(-11).map((message) => ({ role: message.role, content: message.text.slice(0, 4000) }));
   const turn = { role: "assistant", text: "", pending: true, status: "Reading the model", refs: {}, tools: [], flagged: [] };
@@ -1438,6 +1463,7 @@ async function sendChat(question) {
     }
   } catch (error) { turn.error = error.name === "AbortError" ? "Stopped." : `The assistant is unavailable · ${error.message}`; }
   turn.pending = false; state.chat.busy = false; state.chat.abort = null; renderChat();
+  return !turn.error;
 }
 function openChat(prefill) { document.querySelector('[data-analysis-tab="chat"]')?.click(); chatCapability(); if (prefill) sendChat(prefill); else $("chatInput")?.focus(); }
 

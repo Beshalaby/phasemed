@@ -8,6 +8,7 @@ scipy>=1.14
 pytest>=8.0
 httpx>=0.27
 httpx2>=2.13
+certifi>=2024.2.2
 pynetdicom>=3.0
 # Local offline speech-to-text for hologram voice commands.
 -r requirements-voice.txt

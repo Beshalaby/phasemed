@@ -517,7 +517,7 @@ def _run_demo_seed(job_id: str, base_url: str) -> None:
             DEMO_SEED_JOBS[job_id] = {
                 "id": job_id,
                 "status": "completed" if result.returncode == 0 else "failed",
-                "message": output[-1] if output else ("Sample workspace ready" if result.returncode == 0 else "Sample workspace could not be prepared"),
+                "message": output[-1] if output else ("Workspace ready" if result.returncode == 0 else "Workspace could not be prepared"),
                 "study_count": len(_demo_studies()),
             }
     except Exception as exc:
@@ -529,13 +529,13 @@ def _run_demo_seed(job_id: str, base_url: str) -> None:
 def seed_demo_workspace(request: Request) -> dict:
     existing = _demo_studies()
     if existing:
-        return {"job": {"id": "demo-existing", "status": "completed", "message": "Synthetic sample workspace already loaded", "study_count": len(existing)}}
+        return {"job": {"id": "demo-existing", "status": "completed", "message": "Workspace already loaded", "study_count": len(existing)}}
     with DEMO_SEED_LOCK:
         running = next((job for job in DEMO_SEED_JOBS.values() if job["status"] == "running"), None)
         if running:
             return {"job": running}
         job_id = f"demo-{uuid.uuid4().hex[:12]}"
-        job = {"id": job_id, "status": "running", "message": "Preparing synthetic DICOM studies…", "study_count": 0}
+        job = {"id": job_id, "status": "running", "message": "Preparing DICOM studies…", "study_count": 0}
         DEMO_SEED_JOBS[job_id] = job
     host = request.url.hostname or "127.0.0.1"
     port = request.url.port
@@ -549,7 +549,7 @@ def demo_seed_status(job_id: str) -> dict:
     with DEMO_SEED_LOCK:
         job = DEMO_SEED_JOBS.get(job_id)
     if not job:
-        raise HTTPException(404, "Demo seed job not found")
+        raise HTTPException(404, "Workspace preparation job not found")
     return {"job": job}
 
 

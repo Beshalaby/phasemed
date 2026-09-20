@@ -31,6 +31,7 @@ import http.client
 import json
 import os
 import re
+import ssl
 import threading
 import time
 from dataclasses import dataclass, field
@@ -38,7 +39,9 @@ from datetime import datetime
 from typing import Any, Callable, Iterable, Iterator
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlsplit
-from urllib.request import HTTPRedirectHandler, Request, build_opener
+from urllib.request import HTTPRedirectHandler, HTTPSHandler, Request, build_opener
+
+import certifi
 
 from .geometry import contains, distance, intersects, minimum_surface_distance, nearest, within_radius
 from .models import PatientModel, PatientObject
@@ -593,7 +596,9 @@ class _NoRedirect(HTTPRedirectHandler):
         return None
 
 
-_OPENER = build_opener(_NoRedirect)
+# The macOS Python runtime may not expose the system CA bundle to urllib. Use
+# certifi's maintained bundle while keeping certificate verification enabled.
+_OPENER = build_opener(_NoRedirect, HTTPSHandler(context=ssl.create_default_context(cafile=certifi.where())))
 
 
 def _provider_code(error: HTTPError) -> str | None:
