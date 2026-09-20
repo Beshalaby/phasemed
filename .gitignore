@@ -4,3 +4,7 @@ __pycache__/
 .pytest_cache/
 *.py[cod]
 .DS_Store
+# Local secrets (API keys). Only the documented template is tracked.
+.env
+.env.*
+!.env.example

@@ -82,6 +82,25 @@ would rather not carry the model files; `PHASEMED_STT_PROVIDER` pins the engine.
 transcript *means* is never decided by a model: `backend/voice.py` maps the text onto
 PatientObject ids with explicit, testable rules and returns the trace it used.
 
+## Chat assistant
+
+The inspector's **Chat** tab answers questions about the open PatientModel — "what changed since the prior study?", "what is closest to the nodule?" — and flags the structures it describes in the 3D view. It sits beside the scene rather than replacing it, so a flag is visible as it lands.
+
+It is optional. Without a key the tab answers with the built-in deterministic keyword queries about the selected object. To enable the language model:
+
+```bash
+cp .env.example .env && chmod 600 .env      # .env is git-ignored
+# set PHASEMED_OPENAI_API_KEY=... in .env, then restart the server
+```
+
+How it stays grounded: the language model never produces a measurement. It receives a compact digest of the PatientModel (about 5 KB for the demo study, against a 196 KB raw export) and a small set of tools that run the same deterministic bounding-box geometry as the rest of the workstation (`backend/geometry.py`). Every tool result carries its `method`, and the answer's "How this was answered" disclosure lists the calls and returned values. The assistant can flag or select objects and change view; it cannot write to the PatientModel, change a review status, or create a revision. It is instructed to describe geometry and measured change and not to diagnose, stage, or recommend treatment.
+
+What leaves the machine when a key is configured: object labels and types, measured geometry, bounding-box relationships, measured change against the prior study, and — unless `PHASEMED_ASSISTANT_SHARE_CONTEXT=off` — the text of imported clinical context. Never sent: images, the patient name or id, DICOM UIDs (objects are renamed `O1`, `O2`, … before anything is serialised), absolute dates, file paths, adapter logs. Requests use `store: false`. De-identification of free text is pattern-based and best effort; a final check refuses to send a payload that still contains the patient id or a UID. Each turn is written to the local audit trail as `assistant.answered` without the answer text, the digest, or the key.
+
+First run with a real key — worth checking once: the configured model id is accepted (`model_not_found` is reported in the Chat tab if not), and a question that needs a tool ("what changed?") completes, which exercises the echo of reasoning items that `store: false` requires.
+
+`backend/assistant.py` holds the digest, tools, transport and agent loop; `POST /api/patient-models/{model_id}/assistant` streams newline-delimited JSON events (`status`, `delta`, `action`, `done`, `error`).
+
 ## Camera gestures
 
 Open the dedicated hologram display with `Display` in the workstation command bar;
@@ -199,6 +218,7 @@ claims are safe to make. The UI stays focused on the actual clinical workflow.
 - `GET /api/graph/{model_id}` — JSON-LD-compatible graph export
 - `GET /api/export/{model_id}`
 - `POST /api/patient-models/{model_id}/tools` — deterministic downstream AI tool surface
+- `POST /api/patient-models/{model_id}/assistant` — chat about the model; NDJSON stream, 503 when no key is configured
 - `GET /api/model-lab/schema` — stable PatientModel feature schema and algorithm capabilities
 - `POST /api/model-lab/datasets` — assemble a labeled feature dataset from persisted PatientModels
 - `POST /api/model-lab/datasets/import` — import a CSV/JSON label cohort while resolving features from persisted PatientModels
