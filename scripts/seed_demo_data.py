@@ -1,4 +1,4 @@
-"""Populate a running Phasemed workstation with synthetic demo studies.
+"""Populate a running Phasmed workstation with synthetic demo studies.
 
 Every study is a procedurally generated chest CT phantom plus a matching
 DICOM SEG. Organ shapes are voxelized from the BodyParts3D atlas (CC BY-SA 2.1
@@ -255,7 +255,7 @@ def seg_file(spec: dict, uids: dict, labels: np.ndarray) -> tuple[str, bytes]:
 
 
 def seed_study(client: httpx.Client, spec: dict, atlas: dict | None) -> str:
-    spec = {**spec, "origin": "Phasemed synthetic phantom (BodyParts3D-derived)" if atlas is not None else "Phasemed synthetic phantom"}
+    spec = {**spec, "origin": "Phasmed synthetic phantom (BodyParts3D-derived)" if atlas is not None else "Phasmed synthetic phantom"}
     uids = {"study": generate_uid(), "frame": generate_uid()}
     centre = nodule_centre(spec, anatomy_labels(atlas, axes(CT_SIZE, CT_MM), spec["scale"]), axes(CT_SIZE, CT_MM))
     payload = [*ct_files(spec, uids, phantom_labels(spec, atlas, CT_SIZE, CT_MM, centre)), seg_file(spec, uids, phantom_labels(spec, atlas, SEG_SIZE, SEG_MM, centre))]

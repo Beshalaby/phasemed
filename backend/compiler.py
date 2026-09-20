@@ -350,7 +350,7 @@ def _write_voxel_mesh(
             faces.append(tuple(indices))
     vertices = _taubin_smooth(vertices, faces)
     with path.open("w", encoding="utf-8") as handle:
-        handle.write(f"# Phasemed surface mesh for {object_id}\n")
+        handle.write(f"# Phasmed surface mesh for {object_id}\n")
         for vertex in vertices:
             handle.write(f"v {vertex[0]:.5f} {vertex[1]:.5f} {vertex[2]:.5f}\n")
         for face in faces:
@@ -437,7 +437,7 @@ def _write_marching_mesh(
     path = root / "derived" / f"{safe}.obj"
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", encoding="utf-8") as handle:
-        handle.write(f"# Phasemed marching-cubes surface for {object_id}\n")
+        handle.write(f"# Phasmed marching-cubes surface for {object_id}\n")
         for vertex in patient_vertices:
             handle.write(f"v {vertex[0]:.5f} {vertex[1]:.5f} {vertex[2]:.5f}\n")
         for face in triangle_faces:

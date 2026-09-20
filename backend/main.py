@@ -76,7 +76,7 @@ async def lifespan(_app: FastAPI):
             CSTORE_RECEIVER = None
 
 
-app = FastAPI(title="Phasemed Local API", version="0.1.0", lifespan=lifespan)
+app = FastAPI(title="Phasmed Local API", version="0.1.0", lifespan=lifespan)
 app.add_middleware(CORSMiddleware, allow_origins=["http://localhost:8787", "http://127.0.0.1:8787"], allow_methods=["*"], allow_headers=["*"])
 if WEB_ROOT.exists():
     app.mount("/assets", StaticFiles(directory=WEB_ROOT), name="assets")

@@ -113,7 +113,8 @@ def vocabulary_prompt(labels: Iterable[str]) -> str:
     vocabulary keeps "right lung" from being decoded as "ride long".
     """
     words: list[str] = []
-    for word in ["highlight", "clear", "show", "mark", "left", "right", "upper", "middle", "lower", "lobe"]:
+    for word in ["highlight", "clear", "show", "mark", "zoom", "in", "out", "reset", "spin", "stop",
+                 "abnormalities", "findings", "everything", "and", "left", "right", "upper", "middle", "lower", "lobe"]:
         words.append(word)
     for label in labels:
         for token in _label_tokens(label):
@@ -179,7 +180,7 @@ def transcribe_elevenlabs(audio: bytes, *, filename: str = "clip.webm", content_
         ELEVENLABS_STT_URL,
         data=body,
         method="POST",
-        headers={"xi-api-key": settings.api_key, "Content-Type": content, "User-Agent": "Phasemed-local/0.1"},
+        headers={"xi-api-key": settings.api_key, "Content-Type": content, "User-Agent": "Phasmed-local/0.1"},
     )
     try:
         with urlopen(request, timeout=45) as response:
@@ -246,6 +247,29 @@ SYNONYMS: dict[str, str] = {
     "vena cava": "vena_cava",
     "voice box": "trachea",
 }
+# View commands act on the camera instead of the model, so they carry no targets.
+VIEW_COMMANDS: tuple[tuple[str, str], tuple[str, str], ...] = (
+    (r"\b(?:zoom|move|come|get)\s+(?:in|closer)\b|\bcloser\b|\bzoom\s*in\b|\bmagnify\b|\benlarge\b|\bbigger\b", "zoom_in"),
+    (r"\bzoom\s*out\b|\b(?:zoom|move|back)\s+(?:out|away|off)\b|\bfurther\s+(?:out|away)\b|\bsmaller\b|\bwider\b|\bpull\s+back\b", "zoom_out"),
+    (r"\b(?:reset|recenter|re center|centre|center|fit)\s+(?:the\s+)?(?:view|camera|hologram)\b|\bfit\s+to\s+(?:screen|view)\b", "reset_view"),
+    (r"\b(?:stop|pause|freeze|halt)\s+(?:the\s+)?(?:spin\w*|rotat\w*|turning)\b|\bhold\s+still\b|\bstop\s+moving\b", "spin_off"),
+    (r"\b(?:start|resume|keep)\s+(?:the\s+)?(?:spin\w*|rotat\w*)\b|\b(?:spin|rotate)\s+(?:it|the\s+\w+)?\s*(?:again)?\b", "spin_on"),
+)
+VIEW_SUMMARIES = {
+    "zoom_in": "Zoomed in",
+    "zoom_out": "Zoomed out",
+    "reset_view": "View reset",
+    "spin_off": "Rotation paused",
+    "spin_on": "Rotation running",
+}
+# Semantic groups: words that name a kind of object rather than one structure.
+ABNORMAL_WORDS = ("abnormality", "abnormalities", "abnormal", "finding", "findings", "lesion", "lesions", "nodule", "nodules", "mass", "masses", "tumour", "tumor", "tumours", "tumors", "suspicious", "anything wrong", "region of interest", "regions of interest", "hot spot", "hot spots")
+EVERYTHING_WORDS = ("everything", "all anatomy", "all structures", "whole model", "all objects", "the whole thing")
+ABNORMAL_TYPES = ("finding", "lesion")
+ABNORMAL_LABEL = re.compile(r"high.intensity|nodule|lesion|mass|tumou?r|unlabeled", re.IGNORECASE)
+# Conjunctions that join two separate requests in one breath.
+CLAUSE_SPLIT = re.compile(r"\s+(?:and|plus|also|as well as|along with|together with)\s+|\s*,\s*")
+
 LATERAL = {"right": "right", "left": "left"}
 STOPWORDS = {"the", "a", "an", "please", "can", "you", "my", "his", "her", "and", "of", "on", "in", "to", "for", "me", "just", "now", "s"}
 FILLERS = {"um", "uh", "erm", "hmm", "okay", "ok", "so", "like"}
@@ -308,7 +332,7 @@ def _object_entries(objects: Iterable[Any]) -> list[dict[str, Any]]:
         if not obj_id or obj_type == "volume":
             continue
         tokens = _label_tokens(label)
-        entries.append({"id": obj_id, "label": label or obj_id, "tokens": tokens, "side": _side_of(tokens)})
+        entries.append({"id": obj_id, "label": label or obj_id, "type": obj_type or "", "tokens": tokens, "side": _side_of(tokens)})
     return entries
 
 
@@ -339,34 +363,108 @@ def _score(spoken: list[str], entry: dict[str, Any]) -> float:
     return coverage
 
 
-def resolve_command(transcript: str, objects: Iterable[Any]) -> dict[str, Any]:
-    """Map a transcript onto PatientObject ids using explicit, replayable rules."""
-    text = _normalise(transcript)
-    spoken = _tokens(transcript)
-    entries = _object_entries(objects)
-    trace: dict[str, Any] = {"normalised": text, "tokens": spoken, "candidates": []}
+def _view_action(text: str) -> str | None:
+    for pattern, action in VIEW_COMMANDS:
+        if re.search(pattern, text):
+            return action
+    return None
 
-    if any(verb in text for verb in CLEAR_VERBS):
-        return {"intent": "clear", "transcript": transcript, "targets": [], "labels": [], "summary": "Highlight cleared", "trace": trace}
 
-    intent = "highlight" if any(verb in text for verb in HIGHLIGHT_VERBS) else "unknown"
+def _semantic_group(clause: str, entries: list[dict[str, Any]]) -> tuple[str, list[dict[str, Any]]] | None:
+    """Resolve a word that names a kind of object rather than one structure."""
+    if any(re.search(rf"\b{re.escape(word)}\b", clause) for word in EVERYTHING_WORDS):
+        return "everything", list(entries)
+    if any(re.search(rf"\b{re.escape(word)}\b", clause) for word in ABNORMAL_WORDS):
+        flagged = [entry for entry in entries if entry["type"] in ABNORMAL_TYPES]
+        if not flagged:
+            # No reviewed finding objects: fall back to the compiler's unlabeled regions,
+            # which are what "abnormality" means on a model nobody has annotated yet.
+            flagged = [entry for entry in entries if entry["type"] == "region" or ABNORMAL_LABEL.search(entry["label"])]
+        return "abnormalities", flagged
+    return None
+
+
+def _resolve_clause(clause: str, entries: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """Return (winners, scored candidates) for one clause of a command."""
+    group = _semantic_group(clause, entries)
+    if group is not None:
+        _name, members = group
+        return [{"id": entry["id"], "label": entry["label"], "score": 1.0} for entry in members], []
+    spoken = _tokens(clause)
     scored = sorted(
         ({"id": entry["id"], "label": entry["label"], "score": _score(spoken, entry)} for entry in entries),
         key=lambda item: (-item["score"], item["label"]),
     )
-    trace["candidates"] = [item for item in scored[:6] if item["score"] > 0]
     best = scored[0]["score"] if scored else 0.0
     if best <= 0:
-        return {"intent": intent if intent == "clear" else "unknown", "transcript": transcript, "targets": [], "labels": [], "summary": "No matching structure", "trace": trace}
-
+        return [], [item for item in scored[:4] if item["score"] > 0]
     # Everything that matches the winning structure equally well comes along, so
     # "right lung" lights all three right lobes rather than an arbitrary one.
-    winners = [item for item in scored if item["score"] >= best - 1e-9]
+    return [item for item in scored if item["score"] >= best - 1e-9], [item for item in scored[:6] if item["score"] > 0]
+
+
+def _clauses(text: str) -> list[str]:
+    parts = [part.strip() for part in CLAUSE_SPLIT.split(text) if part.strip()]
+    return parts or [text]
+
+
+def _summarise(labels: list[str]) -> str:
+    if len(labels) <= 4:
+        return ", ".join(labels)
+    return f"{labels[0]}, {labels[1]} and {len(labels) - 2} more"
+
+
+def resolve_command(transcript: str, objects: Iterable[Any]) -> dict[str, Any]:
+    """Map a transcript onto an action and PatientObject ids using explicit, replayable rules."""
+    text = _normalise(transcript)
+    entries = _object_entries(objects)
+    trace: dict[str, Any] = {"normalised": text, "tokens": _tokens(transcript), "clauses": [], "candidates": []}
+
+    action = _view_action(text)
+    if action:
+        trace["matched"] = "view command"
+        return {"intent": "view", "action": action, "transcript": transcript, "targets": [], "labels": [], "summary": VIEW_SUMMARIES[action], "trace": trace}
+
+    if any(verb in text for verb in CLEAR_VERBS):
+        return {"intent": "clear", "action": None, "transcript": transcript, "targets": [], "labels": [], "summary": "Highlight cleared", "trace": trace}
+
+    intent = "highlight" if any(verb in text for verb in HIGHLIGHT_VERBS) else "unknown"
+
+    # "highlight right lung and spine" is two requests in one breath; each clause is
+    # resolved on its own so a side in one cannot leak into the other.
+    clauses = _clauses(text)
+    winners: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    index = 0
+    while index < len(clauses):
+        clause = clauses[index]
+        matched, candidates = _resolve_clause(clause, entries)
+        if not matched and index + 1 < len(clauses):
+            # A fragment like "the left" only means something joined to what follows.
+            # The next clause is still resolved on its own, so "the left and right lung"
+            # keeps both sides instead of letting the merge swallow the second one.
+            merged = f"{clause} {clauses[index + 1]}"
+            matched, candidates = _resolve_clause(merged, entries)
+            if matched:
+                clause = merged
+        trace["clauses"].append({"clause": clause, "labels": [item["label"] for item in matched]})
+        trace["candidates"].extend(candidates)
+        for item in matched:
+            if item["id"] not in seen:
+                seen.add(item["id"])
+                winners.append(item)
+        index += 1
+
+    if not winners:
+        return {"intent": "unknown", "action": None, "transcript": transcript, "targets": [], "labels": [], "summary": "No matching structure", "trace": trace}
+
+    labels = [item["label"] for item in winners]
     return {
         "intent": "highlight" if intent in ("highlight", "unknown") else intent,
+        "action": None,
         "transcript": transcript,
         "targets": [item["id"] for item in winners],
-        "labels": [item["label"] for item in winners],
-        "summary": ", ".join(item["label"] for item in winners),
+        "labels": labels,
+        "summary": _summarise(labels),
         "trace": trace,
     }

@@ -1,12 +1,12 @@
-# Phasemed
+# Phasmed
 
-Phasemed is a local-first medical imaging workstation built around a persistent PatientModel: imported DICOM studies are indexed, compiled into source-volume objects, measured deterministically, and exposed to a viewer and model API.
+Phasmed is a local-first medical imaging workstation built around a persistent PatientModel: imported DICOM studies are indexed, compiled into source-volume objects, measured deterministically, and exposed to a viewer and model API.
 
 The name is a coined blend of Greek *anatē* (structure/form) and *topos* (place), reflecting anatomy mapped into patient-specific space. It is a working product name, not a trademark or domain clearance claim.
 
 ## Run locally
 
-The application is standalone and does not use ChatGPT Sites or a hosted deployment. The source is versioned in the Phasemed GitHub repository for collaboration and hackathon delivery.
+The application is standalone and does not use ChatGPT Sites or a hosted deployment. The source is versioned in the Phasmed GitHub repository for collaboration and hackathon delivery.
 
 Set `PHASEMED_RUNTIME_DIR` when the local studies/models database should live somewhere other than `.runtime` in the project folder.
 
@@ -45,11 +45,23 @@ To reseed from scratch, stop the server and remove `.runtime/studies`, `.runtime
 
 Anatomy credit: BodyParts3D, © The Database Center for Life Science, licensed under [CC Attribution-Share Alike 2.1 Japan](https://creativecommons.org/licenses/by-sa/2.1/jp/).
 
+Landing page typefaces (self-hosted in `web/fonts/` so the page works offline): Fraunces and IBM Plex Sans/Mono, both under the SIL Open Font License 1.1; the license texts sit alongside the font files.
+
 ## Hologram voice control
 
 The hologram view has a hold-to-talk control: hold `Space` (or hold the button) and speak,
-release to send. Commands highlight anatomy, for example "highlight right lung",
-"show me the trachea", or "clear the highlight".
+release to send. Three kinds of command are understood:
+
+- **Structures** — "highlight right lung", "show me the trachea", "highlight rib four on
+  the right", "highlight t five". Matched structures paint red.
+- **Several at once** — "highlight right lung and spine", "highlight the heart and the
+  aorta". Each clause resolves on its own, so a side in one cannot leak into the other.
+- **Kinds of object** — "highlight abnormalities" (reviewed findings and lesions, falling
+  back to the compiler's unlabeled regions), "highlight everything".
+- **The view** — "zoom in", "zoom out", "reset the view", "stop spinning", "start
+  rotating". These move the camera and select nothing.
+
+"clear the highlight" removes the colour again.
 
 Transcription runs locally and needs no API key. It is included in the main
 `requirements.txt`; existing virtual environments can add it with:

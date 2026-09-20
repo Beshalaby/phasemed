@@ -42,7 +42,7 @@ def config() -> DICOMwebConfig:
 
 
 def _headers(accept: str) -> dict[str, str]:
-    return {"Accept": accept, "User-Agent": "Phasemed-local/0.1"}
+    return {"Accept": accept, "User-Agent": "Phasmed-local/0.1"}
 
 
 def request(path: str, *, accept: str = "application/dicom+json", method: str = "GET", body: bytes | None = None, content_type: str | None = None) -> tuple[bytes, str]:

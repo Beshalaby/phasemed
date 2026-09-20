@@ -1,1 +1,1 @@
-"""Optional clinical adapter runners for Phasemed."""
+"""Optional clinical adapter runners for Phasmed."""

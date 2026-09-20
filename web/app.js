@@ -388,6 +388,29 @@ function zoomScene(factor, anchor = null) {
   drawAll();
 }
 
+// A highlighted structure can be far smaller than a pixel -- the compiler's high-intensity
+// regions are a couple of cubic millimetres. Mark those with a ring at their centroid so
+// "highlight abnormalities" points somewhere instead of colouring nothing visible.
+const HIGHLIGHT_MARKER_MIN_PX = 12;
+function drawHighlightMarkers(ctx, cam, entries, offsetX = 0, offsetY = 0) {
+  const marked = entries.filter((entry) => isHighlighted(entry.item) && !entry.ghost);
+  if (!marked.length) return;
+  ctx.save();
+  marked.forEach((entry) => {
+    const size = projectSize(entry.item, cam);
+    if (Math.max(size[0], size[1]) >= HIGHLIGHT_MARKER_MIN_PX) return;
+    const point = project(centroidOf(entry.item), cam);
+    const x = point[0] + offsetX;
+    const y = point[1] + offsetY;
+    ctx.strokeStyle = HIGHLIGHT_COLOR;
+    ctx.lineWidth = 1.6;
+    ctx.globalAlpha = .95;
+    ctx.beginPath(); ctx.arc(x, y, 8, 0, Math.PI * 2); ctx.stroke();
+    ctx.globalAlpha = .38;
+    ctx.beginPath(); ctx.arc(x, y, 13, 0, Math.PI * 2); ctx.stroke();
+  });
+  ctx.restore();
+}
 function drawSceneOn(canvas, compact = false) {
   const { context: ctx, width, height } = fitCanvas(canvas); ctx.clearRect(0, 0, width, height); ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue("--scene").trim() || "#f7f9f8"; ctx.fillRect(0, 0, width, height);
   ctx.strokeStyle = "rgba(28,62,55,.08)"; ctx.lineWidth = 1; for (let x = 0; x < width; x += compact ? 32 : 48) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, height); ctx.stroke(); } for (let y = 0; y < height; y += compact ? 32 : 48) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(width, y); ctx.stroke(); }
@@ -404,6 +427,7 @@ function drawSceneOn(canvas, compact = false) {
     ctx.restore();
   };
   shown.forEach((entry) => { if (entry.item.type === "volume") { if (!entry.ghost) drawBox(entry.item); } else if (!inGl.has(entry)) drawObject(entry); });
+  drawHighlightMarkers(ctx, cam, shown);
   const selected = currentObject(); if (state.showLinks && selected) { const anchor = pointFor(selected); ctx.save(); ctx.strokeStyle = "rgba(60,140,125,.42)"; ctx.setLineDash([4, 6]); objectNeighbors(selected.id).forEach((neighbor) => { if (!geometryOf(neighbor)) return; const target = pointFor(neighbor); ctx.globalAlpha = target[2] < anchor[2] ? .5 : 1; ctx.beginPath(); ctx.moveTo(anchor[0], anchor[1]); ctx.lineTo(target[0], target[1]); ctx.stroke(); }); ctx.restore(); }
   const screen = (point) => point.world ? project(point.world, cam) : [point.x, point.y];
   if (state.pathPoints.length) { const points = state.pathPoints.map(screen); ctx.save(); ctx.strokeStyle = "#efc77e"; ctx.lineWidth = 2; ctx.setLineDash([7, 5]); ctx.beginPath(); points.forEach((point, index) => index ? ctx.lineTo(point[0], point[1]) : ctx.moveTo(point[0], point[1])); ctx.stroke(); ctx.setLineDash([]); points.forEach((point) => { ctx.fillStyle = "#efc77e"; ctx.beginPath(); ctx.arc(point[0], point[1], 4, 0, Math.PI * 2); ctx.fill(); }); ctx.restore(); }
@@ -444,6 +468,7 @@ function drawHologram() {
     if (items.length) { const matrices = camMatrices(cam); rendered = MeshView.draw({ width: tile, height: tile, dpr: window.devicePixelRatio || 1, viewports: [{ x: 0, y: 0, w: tile, h: tile, ...matrices }], items }); }
     ctx.save(); ctx.translate(view.x, view.y); ctx.rotate(view.rotation); ctx.globalCompositeOperation = "screen"; ctx.filter = "brightness(1.4) saturate(1.5) drop-shadow(0 0 9px rgba(120,200,255,.55)) drop-shadow(0 0 22px rgba(90,150,255,.32))";
     if (rendered) ctx.drawImage(MeshView.canvas, -tile / 2, -tile / 2, tile, tile);
+    drawHighlightMarkers(ctx, cam, available, -tile / 2, -tile / 2);
     fallback.forEach(({ item, selected }) => { const center = project(centroidOf(item), cam); const size = projectSize(item, cam); const [r, g, b] = hexRgb(meshColor(item)).map((v) => Math.round(v * 255)); ctx.fillStyle = `rgba(${r},${g},${b},${holoAlpha(meshAlpha(item))})`; ctx.beginPath(); ctx.ellipse(center[0] - tile / 2, center[1] - tile / 2, Math.max(10, size[0] * .42), Math.max(10, size[1] * .42), 0, 0, Math.PI * 2); ctx.fill(); });
     ctx.restore();
   });
@@ -546,9 +571,19 @@ async function sendVoiceClip(blob) {
     applyVoiceCommand(result);
   } catch (error) { setVoiceState("idle", "command failed"); toast(`Voice command failed · ${error.message}`); }
 }
+// View commands drive the camera; highlight commands drive the model. Both come back
+// from the same resolver, so the client only has to dispatch on the intent it is given.
+const VOICE_VIEW_ACTIONS = {
+  zoom_in: () => zoomHologram(1.35),
+  zoom_out: () => zoomHologram(.74),
+  reset_view: () => resetHologramView(),
+  spin_off: () => setHoloSpin(false),
+  spin_on: () => setHoloSpin(true),
+};
 function applyVoiceCommand(result) {
   state.voiceTranscript = result?.transcript || "";
-  if (result?.intent === "clear") { state.highlights = []; toast("Highlight cleared"); }
+  if (result?.intent === "view" && VOICE_VIEW_ACTIONS[result.action]) { VOICE_VIEW_ACTIONS[result.action](); toast(result.summary); }
+  else if (result?.intent === "clear") { state.highlights = []; toast("Highlight cleared"); }
   else if (result?.targets?.length) { state.highlights = result.targets; toast(`Highlighted ${result.summary}`); }
   else { state.highlights = []; toast(`Heard “${state.voiceTranscript}” · no matching structure`); }
   setVoiceState("idle");
