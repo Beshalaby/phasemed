@@ -1,0 +1,406 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Workspace Layout Studies</title>
+<style>
+:root {
+  color-scheme: light;
+  --bg: #fbfbfd; --chrome: #ffffff; --panel: #ffffff; --panel-2: #f7f7f9; --panel-3: #f0f0f2;
+  --viewport: #fbfbfd; --scene: #f8f8fa;
+  --line: #e5e5ea; --line-soft: #f0f0f2; --line-bright: #c7c7cc;
+  --text: #1d1d1f; --text-soft: #48484a; --muted: #6e6e73; --quiet: #8e8e93;
+  --teal: #006b5f; --teal-dim: #72b9b1; --violet: #967cff; --amber: #e8b45d;
+  --red: #ef6c70; --green: #56d58c; --blue: #6aa9ff;
+  --mono: "SF Mono", "Roboto Mono", ui-monospace, monospace;
+  --sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Inter", "Helvetica Neue", sans-serif;
+  --zone-rail: #f4f4f6; --zone-view: #eef2f1; --zone-chrome: #ffffff; --zone-accent: rgba(0,107,95,.1);
+}
+:root:not([data-theme="light"]) {
+  @media (prefers-color-scheme: dark) {
+    color-scheme: dark;
+    --bg: #0e1011; --chrome: #16191a; --panel: #16191a; --panel-2: #1c2022; --panel-3: #23282a;
+    --viewport: #0b0d0e; --scene: #101314;
+    --line: #262b2d; --line-soft: #1e2224; --line-bright: #39403f;
+    --text: #f2f4f4; --text-soft: #c8cecd; --muted: #939b9a; --quiet: #6f7877;
+    --teal: #4fd6c0; --teal-dim: #2b7d72;
+    --zone-rail: #191d1e; --zone-view: #12181a; --zone-chrome: #1b1f20; --zone-accent: rgba(79,214,192,.12);
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #0e1011; --chrome: #16191a; --panel: #16191a; --panel-2: #1c2022; --panel-3: #23282a;
+  --viewport: #0b0d0e; --scene: #101314;
+  --line: #262b2d; --line-soft: #1e2224; --line-bright: #39403f;
+  --text: #f2f4f4; --text-soft: #c8cecd; --muted: #939b9a; --quiet: #6f7877;
+  --teal: #4fd6c0; --teal-dim: #2b7d72;
+  --zone-rail: #191d1e; --zone-view: #12181a; --zone-chrome: #1b1f20; --zone-accent: rgba(79,214,192,.12);
+}
+
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--text); font-family: var(--sans); -webkit-font-smoothing: antialiased; }
+button { font: inherit; cursor: pointer; }
+button:focus-visible { outline: 1px solid var(--teal); outline-offset: 2px; }
+
+.page { max-width: 1180px; margin: 0 auto; padding: 40px 16px 72px; }
+header.masthead { border-bottom: 1px solid var(--line); padding-bottom: 22px; margin-bottom: 26px; }
+.eyebrow { font: 10px var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--muted); }
+h1 { margin: 10px 0 8px; font-size: clamp(26px, 4vw, 34px); letter-spacing: -.035em; font-weight: 560; }
+.lede { margin: 0; max-width: 62ch; color: var(--muted); font-size: 14px; line-height: 1.6; }
+
+.controls { display: flex; flex-wrap: wrap; gap: 18px; align-items: flex-end; margin: 22px 0 30px; }
+.control { display: flex; flex-direction: column; gap: 7px; }
+.control > span { font: 9px var(--mono); letter-spacing: .09em; text-transform: uppercase; color: var(--quiet); }
+.segmented { display: flex; border: 1px solid var(--line); border-radius: 9px; overflow: hidden; background: var(--panel); }
+.segmented button { border: 0; background: transparent; color: var(--muted); padding: 7px 12px; font-size: 12px; border-right: 1px solid var(--line-soft); }
+.segmented button:last-child { border-right: 0; }
+.segmented button[aria-pressed="true"] { background: var(--zone-accent); color: var(--text); font-weight: 520; }
+
+.grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(330px, 1fr)); gap: 18px; }
+.card { border: 1px solid var(--line); border-radius: 14px; background: var(--panel); padding: 16px; text-align: left; display: flex; flex-direction: column; gap: 12px; transition: border-color .15s ease, transform .15s ease; }
+.card:hover { border-color: var(--line-bright); }
+.card[aria-pressed="true"] { border-color: var(--teal); box-shadow: 0 0 0 1px var(--teal) inset; }
+.card-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+.card-head h2 { margin: 0; font-size: 15px; font-weight: 560; letter-spacing: -.02em; }
+.card-head .tag { font: 9px var(--mono); color: var(--quiet); letter-spacing: .07em; text-transform: uppercase; white-space: nowrap; }
+.card p.intent { margin: 0; font-size: 12.5px; line-height: 1.55; color: var(--muted); }
+.metrics { display: flex; gap: 16px; font: 10px var(--mono); color: var(--muted); border-top: 1px solid var(--line-soft); padding-top: 10px; }
+.metrics b { display: block; color: var(--text); font-size: 13px; font-weight: 520; letter-spacing: -.01em; }
+.metrics .delta.up { color: var(--teal); }
+.metrics .delta.down { color: var(--red); }
+
+/* --- schematic ------------------------------------------------------------- */
+.mock { border: 1px solid var(--line); border-radius: 9px; overflow: hidden; background: var(--viewport); display: flex; flex-direction: column; }
+.mock .bar { flex: none; display: flex; align-items: center; gap: 6px; padding: 0 8px; background: var(--zone-chrome); border-bottom: 1px solid var(--line); }
+.mock .bar.top { background: #0b0d0e; }
+.mock .bar.top .dot { width: 5px; height: 5px; border-radius: 50%; background: #3a4144; }
+.mock .bar.top .word { height: 4px; border-radius: 2px; background: #454c50; }
+.mock .bar .chip { height: 6px; border-radius: 3px; background: var(--line-bright); opacity: .75; }
+.mock .body { flex: 1; display: flex; min-height: 0; }
+.mock .zone { position: relative; display: flex; flex-direction: column; gap: 5px; padding: 7px; min-width: 0; overflow: hidden; }
+.mock .zone + .zone { border-left: 1px solid var(--line); }
+.mock .rail { background: var(--zone-rail); }
+.mock .view { background: var(--zone-view); align-items: center; justify-content: center; }
+.mock .stack { border-left: 0 !important; border-top: 1px solid var(--line); }
+.mock .row { height: 6px; border-radius: 3px; background: var(--line-bright); opacity: .55; }
+.mock .row.short { width: 55%; } .mock .row.mid { width: 78%; }
+.mock .card-ghost { height: 20px; border-radius: 4px; background: var(--panel); border: 1px solid var(--line); }
+.mock .label { position: absolute; left: 7px; bottom: 6px; font: 8px var(--mono); letter-spacing: .06em; text-transform: uppercase; color: var(--quiet); }
+.mock .view .organ { width: 46%; max-width: 62%; max-height: 74%; aspect-ratio: 3 / 4; border-radius: 42% 42% 38% 38%; background: var(--zone-accent); border: 1px solid var(--teal-dim); }
+.mock .view .organ.wide { width: 62%; }
+.mock .floating { position: absolute; right: 8px; top: 8px; width: 38%; border-radius: 6px; background: var(--panel); border: 1px solid var(--line-bright); padding: 6px; display: flex; flex-direction: column; gap: 4px; box-shadow: 0 6px 18px rgba(0,0,0,.14); }
+.mock .icon-rail { width: 22px; flex: none; background: var(--zone-rail); display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 7px 0; }
+.mock .icon-rail i { width: 10px; height: 10px; border-radius: 3px; background: var(--line-bright); opacity: .7; }
+.mock .drawer { flex: none; border-top: 1px solid var(--line); background: var(--zone-rail); display: flex; gap: 8px; padding: 7px; }
+.mock .drawer .cell { flex: 1; border-radius: 4px; background: var(--panel); border: 1px solid var(--line); }
+.mock .palette { position: absolute; left: 50%; top: 22%; transform: translateX(-50%); width: 58%; border-radius: 8px; background: var(--panel); border: 1px solid var(--line-bright); box-shadow: 0 12px 30px rgba(0,0,0,.22); padding: 7px; display: flex; flex-direction: column; gap: 5px; }
+.mock .strip { flex: none; height: 16px; border-top: 1px solid var(--line); background: var(--zone-rail); display: flex; align-items: center; padding: 0 8px; }
+.mock .strip .track { height: 3px; flex: 1; border-radius: 2px; background: var(--line-bright); opacity: .6; }
+
+/* --- detail ---------------------------------------------------------------- */
+.detail { margin-top: 30px; border: 1px solid var(--line); border-radius: 16px; background: var(--panel); overflow: hidden; }
+.detail-head { padding: 20px 22px 16px; border-bottom: 1px solid var(--line); }
+.detail-head h2 { margin: 0 0 6px; font-size: 20px; letter-spacing: -.03em; font-weight: 560; }
+.detail-head p { margin: 0; color: var(--muted); font-size: 13.5px; line-height: 1.6; max-width: 70ch; }
+.detail-body { display: grid; grid-template-columns: minmax(320px, 1.05fr) minmax(280px, 1fr); gap: 0; }
+.detail-mock { padding: 22px; border-right: 1px solid var(--line); background: var(--panel-2); }
+.detail-mock .mock { height: 330px; }
+.detail-notes { padding: 22px; display: flex; flex-direction: column; gap: 18px; }
+.note h3 { margin: 0 0 7px; font: 9px var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--quiet); }
+.note ul { margin: 0; padding-left: 16px; display: flex; flex-direction: column; gap: 6px; }
+.note li { font-size: 13px; line-height: 1.55; color: var(--text-soft); }
+.note li.cost::marker { color: var(--red); }
+.note li.win::marker { color: var(--teal); }
+.note p { margin: 0; font-size: 13px; line-height: 1.6; color: var(--text-soft); }
+
+footer { margin-top: 34px; border-top: 1px solid var(--line); padding-top: 16px; color: var(--quiet); font-size: 12px; line-height: 1.6; }
+footer code { font: 11px var(--mono); color: var(--muted); }
+@media (max-width: 760px) {
+  .detail-body { grid-template-columns: 1fr; }
+  .detail-mock { border-right: 0; border-bottom: 1px solid var(--line); }
+}
+</style>
+</head>
+<body>
+<div class="page">
+  <header class="masthead">
+    <span class="eyebrow">Phasmed · workspace</span>
+    <h1>Workspace layout studies</h1>
+    <p class="lede">Six arrangements of the same workstation, drawn to the proportions the app actually ships
+      (topbar 48px, commandbar 42px, rails 238px and 306px). The numbers under each are the real usable
+      viewport at the selected window size, so the trade-off is a measurement rather than a feeling.</p>
+  </header>
+
+  <div class="controls">
+    <label class="control">
+      <span>Window</span>
+      <div class="segmented" id="sizeSwitch" role="group" aria-label="Window size"></div>
+    </label>
+    <label class="control">
+      <span>State</span>
+      <div class="segmented" id="stateSwitch" role="group" aria-label="Workspace state">
+        <button data-state="study" aria-pressed="true">Study open</button>
+        <button data-state="empty" aria-pressed="false">No study</button>
+      </div>
+    </label>
+    <label class="control">
+      <span>Theme</span>
+      <div class="segmented" id="themeSwitch" role="group" aria-label="Theme">
+        <button data-theme="auto" aria-pressed="true">Auto</button>
+        <button data-theme="light" aria-pressed="false">Light</button>
+        <button data-theme="dark" aria-pressed="false">Dark</button>
+      </div>
+    </label>
+  </div>
+
+  <div class="grid" id="cards"></div>
+
+  <section class="detail" id="detail" aria-live="polite"></section>
+
+  <footer>
+    Schematics are proportional, not pixel-exact renders. Measurements taken from <code>web/styles.css</code>:
+    <code>.topbar</code> 48px, <code>.commandbar</code> 42px, <code>.workstation</code>
+    <code>grid-template-columns: 238px minmax(520px, 1fr) 306px</code>, and the 1280px breakpoint that narrows
+    the rails to 205px and 270px. Viewport area is the canvas left for the model after chrome, rails and strips.
+  </footer>
+</div>
+
+<script>
+const SIZES = [
+  { id: "13", label: '13" laptop', w: 1280, h: 800 },
+  { id: "14", label: '14" default', w: 1512, h: 945 },
+  { id: "27", label: '27" display', w: 2560, h: 1440 },
+  { id: "cart", label: "Ward cart", w: 1024, h: 768 },
+];
+
+// Real chrome heights from styles.css.
+const TOPBAR = 48, COMMANDBAR = 42, TIMELINE = 44;
+const railWidths = (w) => (w <= 1280 ? { left: 205, right: 270 } : { left: 238, right: 306 });
+
+const LAYOUTS = [
+  {
+    id: "triple",
+    name: "Triple rail",
+    tag: "shipping today",
+    intent: "Studies left, model centre, inspector right, with every control docked to a bar. Nothing is hidden and nothing moves.",
+    summary: "The layout the workstation ships with. Its virtue is that no state is concealed: the study list, the selected object, its measurements and its evidence are all on screen at once, so a reviewer never wonders what the app is currently doing.",
+    viewport: (w, h, state) => ({
+      w: state === "empty" ? w - railWidths(w).left : w - railWidths(w).left - railWidths(w).right,
+      h: h - TOPBAR - COMMANDBAR - TIMELINE,
+    }),
+    wins: ["Every piece of state is visible without a click", "Selection, geometry and evidence stay in one glance", "Predictable: nothing slides or overlays"],
+    costs: ["On a 13\" screen the model gets less than 60% of the width", "Three competing scroll regions", "The inspector is tall and narrow, so measurements wrap"],
+    best: "Reading a study at a desk with a large display.",
+    mock: (state) => `
+      <div class="bar top" style="height:13px"><span class="dot"></span><span class="word" style="width:34px"></span><span class="word" style="width:52px;opacity:.5"></span></div>
+      <div class="bar" style="height:12px"><span class="chip" style="width:26px"></span><span class="chip" style="width:20px"></span><span class="chip" style="width:20px"></span><span class="chip" style="width:30px;margin-left:auto"></span></div>
+      <div class="body">
+        <div class="zone rail" style="flex:0 0 22%"><div class="row mid"></div><div class="card-ghost"></div><div class="card-ghost"></div><div class="card-ghost" style="opacity:.5"></div><span class="label">studies</span></div>
+        <div class="zone view" style="flex:1"><div class="organ"></div><span class="label">model</span></div>
+        ${state === "empty" ? "" : `<div class="zone rail" style="flex:0 0 26%"><div class="row short"></div><div class="card-ghost" style="height:30px"></div><div class="row"></div><div class="row mid"></div><div class="row short"></div><span class="label">inspector</span></div>`}
+      </div>
+      <div class="strip"><span class="track"></span></div>`,
+  },
+  {
+    id: "canvas",
+    name: "Canvas first",
+    tag: "rails collapse",
+    intent: "Both rails shrink to 22px icon strips. Studies and inspector open as overlays above the canvas, on demand.",
+    summary: "Borrowed from drawing tools: the document owns the screen and panels are summoned. The model roughly doubles in area on a laptop, which matters most for the 3D scene and the hologram, where pixels are the product.",
+    viewport: (w, h) => ({ w: w - 44, h: h - TOPBAR - COMMANDBAR - TIMELINE }),
+    wins: ["Largest canvas of any option, on every screen size", "Same layout at 1024px and 2560px — no breakpoint cliff", "Overlays can be wider than a 306px rail when open"],
+    costs: ["Selected-object detail is a click away, not a glance", "Overlays cover the very anatomy being inspected", "Easy to lose track of which filters are active"],
+    best: "3D work, procedure planning, and anything projected or presented.",
+    mock: () => `
+      <div class="bar top" style="height:13px"><span class="dot"></span><span class="word" style="width:34px"></span></div>
+      <div class="bar" style="height:12px"><span class="chip" style="width:22px"></span><span class="chip" style="width:22px"></span><span class="chip" style="width:28px;margin-left:auto"></span></div>
+      <div class="body">
+        <div class="icon-rail"><i></i><i></i><i></i><i style="opacity:.35"></i></div>
+        <div class="zone view" style="flex:1;position:relative">
+          <div class="organ wide"></div>
+          <div class="floating"><div class="row mid"></div><div class="row"></div><div class="row short"></div></div>
+          <span class="label">model · overlay inspector</span>
+        </div>
+        <div class="icon-rail"><i></i><i></i><i style="opacity:.35"></i></div>
+      </div>
+      <div class="strip"><span class="track"></span></div>`,
+  },
+  {
+    id: "drawer",
+    name: "Inspector drawer",
+    tag: "wide + short",
+    intent: "Keep the study rail; move the inspector to a bottom drawer that lays measurements out horizontally.",
+    summary: "Laptop screens are wide and short, and the current inspector fights that: a 306px column forces every number to wrap while 300px of vertical space sits empty. A drawer turns the inspector into a row of tiles and hands the width back to the model.",
+    viewport: (w, h, state) => ({
+      w: w - railWidths(w).left,
+      h: h - TOPBAR - COMMANDBAR - (state === "empty" ? 0 : 150),
+    }),
+    wins: ["Measurements sit side by side instead of wrapping", "Model keeps the full width of the screen", "Drawer height is draggable — collapse it to a summary line"],
+    costs: ["Eats vertical space, which the 3D scene also wants", "Long neighbour lists scroll horizontally, which reads badly", "Two stacked scroll areas on a 768px-tall cart screen"],
+    best: "Wide desktop displays and reporting, where numbers matter more than scene height.",
+    mock: (state) => `
+      <div class="bar top" style="height:13px"><span class="dot"></span><span class="word" style="width:34px"></span></div>
+      <div class="bar" style="height:12px"><span class="chip" style="width:26px"></span><span class="chip" style="width:20px"></span><span class="chip" style="width:30px;margin-left:auto"></span></div>
+      <div class="body">
+        <div class="zone rail" style="flex:0 0 22%"><div class="row mid"></div><div class="card-ghost"></div><div class="card-ghost"></div><span class="label">studies</span></div>
+        <div class="zone view" style="flex:1"><div class="organ wide"></div><span class="label">model</span></div>
+      </div>
+      ${state === "empty" ? "" : `<div class="drawer"><div class="cell"></div><div class="cell"></div><div class="cell"></div><div class="cell" style="flex:1.4"></div></div>`}`,
+  },
+  {
+    id: "compare",
+    name: "Temporal split",
+    tag: "prior vs current",
+    intent: "Two viewports side by side — prior and current — sharing one inspector and one camera.",
+    summary: "The product's claim is a model that persists across studies, but today comparison hides inside a timeline slider on a single canvas. This layout makes the comparison the screen: linked cameras, one selection, differences called out between the panes.",
+    viewport: (w, h) => {
+      const rails = railWidths(w);
+      return { w: Math.floor((w - rails.left - rails.right) / 2), h: h - TOPBAR - COMMANDBAR - TIMELINE, each: true };
+    },
+    wins: ["Change is seen directly instead of scrubbed for", "One selection, one camera, two moments", "Difference and morph modes get somewhere to live"],
+    costs: ["Halves each canvas — unusable under ~1500px with rails open", "Only meaningful when a prior study exists", "Doubles mesh draw cost per frame"],
+    best: "Follow-up reads where the question is what moved.",
+    mock: () => `
+      <div class="bar top" style="height:13px"><span class="dot"></span><span class="word" style="width:34px"></span></div>
+      <div class="bar" style="height:12px"><span class="chip" style="width:24px"></span><span class="chip" style="width:24px"></span><span class="chip" style="width:34px;margin-left:auto"></span></div>
+      <div class="body">
+        <div class="zone rail" style="flex:0 0 17%"><div class="row mid"></div><div class="card-ghost"></div><span class="label">studies</span></div>
+        <div class="zone view" style="flex:1"><div class="organ"></div><span class="label">prior</span></div>
+        <div class="zone view" style="flex:1"><div class="organ"></div><span class="label">current</span></div>
+        <div class="zone rail" style="flex:0 0 20%"><div class="row short"></div><div class="card-ghost" style="height:26px"></div><div class="row"></div><span class="label">delta</span></div>
+      </div>
+      <div class="strip"><span class="track"></span></div>`,
+  },
+  {
+    id: "palette",
+    name: "Zero chrome",
+    tag: "command driven",
+    intent: "No rails at all. A ⌘K palette reaches every study and object; the inspector is a card anchored beside the selection; voice is a first-class input.",
+    summary: "The hologram view already proved this works — black screen, one control bar, hold space to speak. This applies the same thinking to the whole workspace: the model fills the screen and the interface appears where you are looking, when you ask for it.",
+    viewport: (w, h) => ({ w, h: h - 36 }),
+    wins: ["Maximum canvas, identical on any display", "Search beats scanning once a model has 80 objects", "Continuous with the hologram and voice control already built"],
+    costs: ["Discoverability collapses — nothing announces what is possible", "Needs a real keyboard, poor fit for a touch cart", "Every affordance must be taught or remembered"],
+    best: "Demos, single-operator power use, and the hologram.",
+    mock: () => `
+      <div class="body" style="position:relative">
+        <div class="zone view" style="flex:1;position:relative">
+          <div class="organ wide" style="width:52%"></div>
+          <div class="palette"><div class="row mid"></div><div class="row"></div><div class="row short"></div></div>
+          <div class="floating" style="right:10px;bottom:24px;top:auto;width:34%"><div class="row mid"></div><div class="row short"></div></div>
+          <span class="label">model · palette · anchored inspector</span>
+        </div>
+      </div>
+      <div class="bar" style="height:14px;border-top:1px solid var(--line);border-bottom:0;justify-content:center;gap:5px"><span class="chip" style="width:30px"></span><span class="chip" style="width:18px"></span><span class="chip" style="width:18px"></span></div>`,
+  },
+  {
+    id: "task",
+    name: "Task rail",
+    tag: "one panel, many roles",
+    intent: "A single right panel whose contents follow the mode — Review, Change, Procedure — while the study rail auto-hides once a study is open.",
+    summary: "Today the workspace carries both a mode switch and three analysis tabs, which overlap: Review mode with the Evidence tab selected is two navigations expressing one intent. Folding the tabs into the mode leaves one place to look and one thing to choose.",
+    viewport: (w, h, state) => ({
+      w: state === "empty" ? w - railWidths(w).left : w - railWidths(w).right,
+      h: h - TOPBAR - COMMANDBAR - TIMELINE,
+    }),
+    wins: ["Removes a whole navigation layer", "Panel width can change per task — wider for evidence", "Study rail returns on hover or ⌘1, so nothing is lost"],
+    costs: ["Switching task hides what the previous panel showed", "Auto-hiding rails surprise people the first few times", "Cross-task work (evidence while planning) needs pinning"],
+    best: "Focused single-task sessions and smaller screens.",
+    mock: (state) => `
+      <div class="bar top" style="height:13px"><span class="dot"></span><span class="word" style="width:34px"></span></div>
+      <div class="bar" style="height:12px"><span class="chip" style="width:34px;background:var(--teal-dim)"></span><span class="chip" style="width:24px"></span><span class="chip" style="width:24px"></span></div>
+      <div class="body">
+        <div class="icon-rail"><i></i><i></i><i style="opacity:.35"></i></div>
+        <div class="zone view" style="flex:1"><div class="organ wide"></div><span class="label">model</span></div>
+        ${state === "empty" ? "" : `<div class="zone rail" style="flex:0 0 26%"><div class="row short"></div><div class="card-ghost" style="height:26px"></div><div class="row"></div><div class="row mid"></div><span class="label">task panel</span></div>`}
+      </div>
+      <div class="strip"><span class="track"></span></div>`,
+  },
+];
+
+const state = { size: SIZES[1], state: "study", selected: "triple" };
+
+function area(layout) {
+  const v = layout.viewport(state.size.w, state.size.h, state.state);
+  const total = v.each ? v.w * v.h * 2 : v.w * v.h;
+  return { ...v, total };
+}
+
+function baselineArea() { return area(LAYOUTS[0]).total; }
+
+function renderCards() {
+  const host = document.getElementById("cards");
+  host.innerHTML = "";
+  const base = baselineArea();
+  LAYOUTS.forEach((layout) => {
+    const metrics = area(layout);
+    const delta = Math.round(((metrics.total - base) / base) * 100);
+    const card = document.createElement("button");
+    card.className = "card";
+    card.type = "button";
+    card.setAttribute("aria-pressed", String(state.selected === layout.id));
+    card.innerHTML = `
+      <div class="card-head"><h2>${layout.name}</h2><span class="tag">${layout.tag}</span></div>
+      <div class="mock" style="height:150px">${layout.mock(state.state)}</div>
+      <p class="intent">${layout.intent}</p>
+      <div class="metrics">
+        <div><b>${metrics.w}${metrics.each ? " × 2" : ""}</b>canvas px wide</div>
+        <div><b>${metrics.h}</b>px tall</div>
+        <div><b class="delta ${delta > 0 ? "up" : delta < 0 ? "down" : ""}">${delta > 0 ? "+" : ""}${delta}%</b>area vs today</div>
+      </div>`;
+    card.addEventListener("click", () => { state.selected = layout.id; render(); });
+    host.appendChild(card);
+  });
+}
+
+function renderDetail() {
+  const layout = LAYOUTS.find((item) => item.id === state.selected);
+  const metrics = area(layout);
+  document.getElementById("detail").innerHTML = `
+    <div class="detail-head">
+      <h2>${layout.name}</h2>
+      <p>${layout.summary}</p>
+    </div>
+    <div class="detail-body">
+      <div class="detail-mock"><div class="mock">${layout.mock(state.state)}</div></div>
+      <div class="detail-notes">
+        <div class="note"><h3>What it wins</h3><ul>${layout.wins.map((item) => `<li class="win">${item}</li>`).join("")}</ul></div>
+        <div class="note"><h3>What it costs</h3><ul>${layout.costs.map((item) => `<li class="cost">${item}</li>`).join("")}</ul></div>
+        <div class="note"><h3>Best for</h3><p>${layout.best}</p></div>
+        <div class="note"><h3>At ${state.size.label} (${state.size.w}×${state.size.h})</h3><p>${metrics.w}${metrics.each ? " × 2" : ""} × ${metrics.h} px of canvas${metrics.each ? " per pane" : ""}.</p></div>
+      </div>
+    </div>`;
+}
+
+function renderSizes() {
+  const host = document.getElementById("sizeSwitch");
+  host.innerHTML = "";
+  SIZES.forEach((size) => {
+    const button = document.createElement("button");
+    button.textContent = size.label;
+    button.setAttribute("aria-pressed", String(size.id === state.size.id));
+    button.addEventListener("click", () => { state.size = size; render(); });
+    host.appendChild(button);
+  });
+}
+
+function render() { renderSizes(); renderCards(); renderDetail(); }
+
+document.getElementById("stateSwitch").addEventListener("click", (event) => {
+  const button = event.target.closest("button"); if (!button) return;
+  state.state = button.dataset.state;
+  [...event.currentTarget.children].forEach((item) => item.setAttribute("aria-pressed", String(item === button)));
+  render();
+});
+document.getElementById("themeSwitch").addEventListener("click", (event) => {
+  const button = event.target.closest("button"); if (!button) return;
+  const theme = button.dataset.theme;
+  if (theme === "auto") document.documentElement.removeAttribute("data-theme");
+  else document.documentElement.setAttribute("data-theme", theme);
+  [...event.currentTarget.children].forEach((item) => item.setAttribute("aria-pressed", String(item === button)));
+});
+
+render();
+</script>
+</body>
+</html>
