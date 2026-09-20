@@ -46,8 +46,18 @@ Anatomy credit: BodyParts3D, © The Database Center for Life Science, licensed u
 ## Hologram voice control
 
 The hologram view has a hold-to-talk control: hold `Space` (or hold the button) and speak,
-release to send. Commands highlight anatomy, for example "highlight right lung",
-"show me the trachea", or "clear the highlight".
+release to send. Three kinds of command are understood:
+
+- **Structures** — "highlight right lung", "show me the trachea", "highlight rib four on
+  the right", "highlight t five". Matched structures paint red.
+- **Several at once** — "highlight right lung and spine", "highlight the heart and the
+  aorta". Each clause resolves on its own, so a side in one cannot leak into the other.
+- **Kinds of object** — "highlight abnormalities" (reviewed findings and lesions, falling
+  back to the compiler's unlabeled regions), "highlight everything".
+- **The view** — "zoom in", "zoom out", "reset the view", "stop spinning", "start
+  rotating". These move the camera and select nothing.
+
+"clear the highlight" removes the colour again.
 
 Transcription runs locally and needs no API key:
 

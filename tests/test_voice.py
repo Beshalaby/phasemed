@@ -27,6 +27,11 @@ CHEST_LABELS = [
 ]
 OBJECTS = [{"id": f"obj-{index}", "type": "anatomy", "label": label} for index, label in enumerate(CHEST_LABELS)]
 OBJECTS.append({"id": "obj-volume", "type": "volume", "label": "1.25x1.25 LUNG"})
+REGION_OBJECTS = OBJECTS + [
+    {"id": "region-1", "type": "region", "label": "High-intensity region · unlabeled 01"},
+    {"id": "region-2", "type": "region", "label": "High-intensity region · unlabeled 02"},
+]
+FINDING_OBJECTS = REGION_OBJECTS + [{"id": "finding-1", "type": "finding", "label": "spiculated nodule"}]
 
 
 def labels_for(transcript: str) -> list[str]:
@@ -227,3 +232,84 @@ def test_transcription_is_serialised_per_model(monkeypatch):
     for thread in threads:
         thread.join()
     assert overlap["max"] == 1
+
+
+def test_view_commands_move_the_camera_not_the_model():
+    for phrase, action in [
+        ("zoom in", "zoom_in"),
+        ("move closer", "zoom_in"),
+        ("zoom out", "zoom_out"),
+        ("pull back", "zoom_out"),
+        ("reset the view", "reset_view"),
+        ("stop spinning", "spin_off"),
+        ("start rotating", "spin_on"),
+    ]:
+        result = resolve_command(phrase, OBJECTS)
+        assert result["intent"] == "view", phrase
+        assert result["action"] == action, phrase
+        assert result["targets"] == []
+
+
+def test_conjunctions_select_both_requests():
+    assert labels_for("highlight the heart and the aorta") == ["aorta", "heart"]
+    assert labels_for("highlight right lung and the trachea") == [
+        "lung_lower_lobe_right",
+        "lung_middle_lobe_right",
+        "lung_upper_lobe_right",
+        "trachea",
+    ]
+
+
+def test_a_side_fragment_keeps_both_sides():
+    """"the left and right lung" must not let the merge swallow the second side."""
+    assert labels_for("highlight the left and right lung") == [
+        "lung_lower_lobe_left",
+        "lung_lower_lobe_right",
+        "lung_middle_lobe_right",
+        "lung_upper_lobe_left",
+        "lung_upper_lobe_right",
+    ]
+
+
+def test_each_clause_resolves_independently():
+    """A side in one clause must not leak into the next."""
+    labels = labels_for("highlight the left lung and the heart")
+    assert "heart" in labels
+    assert not any(label.endswith("_right") for label in labels)
+
+
+def test_conjoined_targets_are_deduplicated():
+    assert labels_for("highlight the heart and the heart") == ["heart"]
+
+
+def test_abnormalities_select_reviewed_findings_when_present():
+    result = resolve_command("highlight abnormalities", FINDING_OBJECTS)
+    assert result["labels"] == ["spiculated nodule"]
+
+
+def test_abnormalities_fall_back_to_unlabeled_regions():
+    result = resolve_command("show me any lesions", REGION_OBJECTS)
+    assert sorted(result["labels"]) == [
+        "High-intensity region · unlabeled 01",
+        "High-intensity region · unlabeled 02",
+    ]
+
+
+def test_abnormality_synonyms():
+    for phrase in ["highlight the findings", "highlight any nodules", "highlight anything suspicious"]:
+        assert resolve_command(phrase, FINDING_OBJECTS)["labels"] == ["spiculated nodule"], phrase
+
+
+def test_everything_selects_all_non_volume_objects():
+    result = resolve_command("highlight everything", REGION_OBJECTS)
+    assert len(result["targets"]) == len(REGION_OBJECTS) - 1  # the volume is never a target
+
+
+def test_long_selections_get_a_compact_summary():
+    result = resolve_command("highlight everything", REGION_OBJECTS)
+    assert "more" in result["summary"]
+
+
+def test_clause_resolution_is_traceable():
+    trace = resolve_command("highlight the heart and the aorta", OBJECTS)["trace"]
+    assert [entry["clause"] for entry in trace["clauses"]] == ["highlight the heart", "the aorta"]
