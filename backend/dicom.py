@@ -4,9 +4,10 @@ import io
 import json
 import os
 import struct
+import threading
 import zlib
 import zipfile
-from collections import defaultdict
+from collections import OrderedDict, defaultdict
 from pathlib import Path
 from typing import Iterable
 
@@ -14,6 +15,11 @@ import pydicom
 from pydicom.dataset import Dataset
 
 from .models import StudySummary
+
+
+_VOLUME_CACHE_LOCK = threading.Lock()
+_VOLUME_CACHE: OrderedDict[tuple, object] = OrderedDict()
+_VOLUME_CACHE_SIZE = 2
 
 
 def _value(ds: Dataset, name: str, default: str | None = None) -> str | None:
@@ -208,23 +214,47 @@ def load_series_volume(root: Path, series: dict):
     """
     import numpy as np
 
-    frames = []
+    instance_files = []
     for instance in series.get("instances", []):
+        relative = str(instance.get("path") or "")
+        path = root / relative
         try:
-            ds = pydicom.dcmread(str(root / instance["path"]), force=False)
-            arr = scaled_pixel_array(ds)
-            if arr.ndim == 2:
-                frames.append(arr)
-            elif arr.ndim == 3:
-                frames.extend(list(arr))
-        except Exception:
-            continue
-    if not frames:
-        return None
-    shapes = {tuple(frame.shape) for frame in frames}
-    if len(shapes) != 1:
-        return None
-    return np.stack(frames, axis=0)
+            stat = path.stat()
+            instance_files.append((relative, stat.st_mtime_ns, stat.st_size))
+        except OSError:
+            instance_files.append((relative, -1, -1))
+    cache_key = (str(root.resolve()), str(series.get("series_instance_uid") or ""), tuple(instance_files))
+    # MPR requests arrive concurrently for the three planes. Keep volume
+    # reconstruction single-flight so a slider move does not reread hundreds
+    # of DICOM files three times before rendering one frame.
+    with _VOLUME_CACHE_LOCK:
+        cached = _VOLUME_CACHE.get(cache_key)
+        if cached is not None:
+            _VOLUME_CACHE.move_to_end(cache_key)
+            return cached
+        frames = []
+        for relative, _, _ in instance_files:
+            try:
+                ds = pydicom.dcmread(str(root / relative), force=False)
+                arr = scaled_pixel_array(ds)
+                if arr.ndim == 2:
+                    frames.append(arr)
+                elif arr.ndim == 3:
+                    frames.extend(list(arr))
+            except Exception:
+                continue
+        if not frames:
+            return None
+        shapes = {tuple(frame.shape) for frame in frames}
+        if len(shapes) != 1:
+            return None
+        volume = np.stack(frames, axis=0)
+        volume.setflags(write=False)
+        _VOLUME_CACHE[cache_key] = volume
+        _VOLUME_CACHE.move_to_end(cache_key)
+        while len(_VOLUME_CACHE) > _VOLUME_CACHE_SIZE:
+            _VOLUME_CACHE.popitem(last=False)
+        return volume
 
 
 def volume_plane_png(root: Path, series: dict, plane: str = "axial", index: int | None = None, window_center: float | None = None, window_width: float | None = None) -> tuple[bytes, dict]:

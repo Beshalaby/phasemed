@@ -8,6 +8,8 @@ from typing import Callable
 
 import pydicom
 import numpy as np
+from scipy.ndimage import gaussian_filter
+from skimage.measure import marching_cubes, mesh_surface_area
 
 from .dicom import extract_pixels, index_directory, scaled_pixel_array
 from .dicomweb import capability_status as dicomweb_capability_status
@@ -280,9 +282,28 @@ def _write_voxel_mesh(
     column_axis: tuple[float, float, float] = (0.0, 1.0, 0.0),
     frame_origins: dict[int, tuple[float, float, float]] | None = None,
 ) -> tuple[str | None, str | None, int, int, float | None]:
-    """Write an exposed-voxel OBJ surface mesh for a supplied binary labelmap."""
-    if not voxels or len(voxels) > 250_000:
+    """Write an OBJ surface mesh for a supplied binary labelmap.
+
+    Tiny regions retain the exact exposed-voxel surface used by the local
+    fallback compiler. Larger clinical masks use marching cubes with an
+    adaptive step size, so whole organs are represented without creating
+    multi-million-triangle browser payloads.
+    """
+    if not voxels:
         return None, None, 0, 0, None
+    if len(voxels) > 64:
+        return _write_marching_mesh(
+            root,
+            object_id,
+            voxels,
+            sx,
+            sy,
+            sz,
+            origin=origin,
+            row_axis=row_axis,
+            column_axis=column_axis,
+            frame_origins=frame_origins,
+        )
     safe = re.sub(r"[^A-Za-z0-9_.-]", "_", object_id)
     path = root / "derived" / f"{safe}.obj"
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -337,6 +358,94 @@ def _write_voxel_mesh(
     return f"mesh:{object_id}", path.relative_to(root).as_posix(), len(vertices), len(faces), round(surface_area, 3)
 
 
+def _write_marching_mesh(
+    root: Path,
+    object_id: str,
+    voxels: set[tuple[int, int, int]],
+    sx: float,
+    sy: float,
+    sz: float,
+    *,
+    origin: tuple[float, float, float],
+    row_axis: tuple[float, float, float],
+    column_axis: tuple[float, float, float],
+    frame_origins: dict[int, tuple[float, float, float]] | None,
+) -> tuple[str | None, str | None, int, int, float | None]:
+    """Extract a smooth, bounded-complexity surface from a binary mask."""
+    xs = [voxel[0] for voxel in voxels]
+    ys = [voxel[1] for voxel in voxels]
+    normal_axis = (
+        row_axis[1] * column_axis[2] - row_axis[2] * column_axis[1],
+        row_axis[2] * column_axis[0] - row_axis[0] * column_axis[2],
+        row_axis[0] * column_axis[1] - row_axis[1] * column_axis[0],
+    )
+    z_keys = sorted(
+        {voxel[2] for voxel in voxels},
+        key=lambda value: sum((frame_origins or {}).get(value, (origin[0], origin[1], origin[2] + value * sz))[axis] * normal_axis[axis] for axis in range(3)),
+    )
+    min_x, max_x = min(xs), max(xs)
+    min_y, max_y = min(ys), max(ys)
+    z_lookup = {value: index for index, value in enumerate(z_keys)}
+    mask = np.zeros((len(z_keys), max_y - min_y + 1, max_x - min_x + 1), dtype=np.uint8)
+    for x, y, z in voxels:
+        mask[z_lookup[z], y - min_y, x - min_x] = 1
+    mask = np.pad(mask, 1)
+    # The fast TotalSegmentator model operates on a coarser volume than the
+    # source CT. Smooth in labelmap space before extracting the isosurface so
+    # slice spacing does not read as regular ribs/bands on curved organs.
+    field = gaussian_filter(mask.astype(np.float32), sigma=(1.2, 1.05, 1.05), mode="constant") if len(voxels) > 1_000 else mask
+    vertices, faces, _, _ = marching_cubes(field, level=0.5, step_size=1, allow_degenerate=False)
+    vertices -= 1.0
+    origins = [(frame_origins or {}).get(key, tuple(origin[i] + normal_axis[i] * key * sz for i in range(3))) for key in z_keys]
+
+    def slice_origin(position: float) -> tuple[float, float, float]:
+        if len(origins) == 1:
+            return tuple(origins[0][i] + normal_axis[i] * position * sz for i in range(3))
+        if position <= 0:
+            return tuple(origins[0][i] + (origins[1][i] - origins[0][i]) * position for i in range(3))
+        if position >= len(origins) - 1:
+            amount = position - (len(origins) - 1)
+            return tuple(origins[-1][i] + (origins[-1][i] - origins[-2][i]) * amount for i in range(3))
+        lower = int(math.floor(position))
+        amount = position - lower
+        return tuple(origins[lower][i] + (origins[lower + 1][i] - origins[lower][i]) * amount for i in range(3))
+
+    patient_vertices: list[tuple[float, float, float]] = []
+    for z_value, y_value, x_value in vertices:
+        base = slice_origin(float(z_value))
+        x = min_x + float(x_value)
+        y = min_y + float(y_value)
+        patient_vertices.append(tuple(base[i] + row_axis[i] * x * sy + column_axis[i] * y * sx for i in range(3)))
+    patient_points = np.asarray(patient_vertices, dtype=np.float64)
+    if len(faces) > 120_000:
+        # Vertex clustering reduces transfer/GPU cost after full-resolution
+        # extraction. Unlike marching with a coarse step, this keeps curved
+        # organ silhouettes free of regular sampling bands.
+        cell = max(1.25, min(sx, sy, sz) * 1.5)
+        keys = np.floor(patient_points / cell).astype(np.int64)
+        _, inverse = np.unique(keys, axis=0, return_inverse=True)
+        counts = np.bincount(inverse)
+        patient_points = np.column_stack([np.bincount(inverse, weights=patient_points[:, axis]) / counts for axis in range(3)])
+        faces = inverse[faces]
+        valid = (faces[:, 0] != faces[:, 1]) & (faces[:, 1] != faces[:, 2]) & (faces[:, 0] != faces[:, 2])
+        faces = faces[valid]
+        _, unique_indices = np.unique(np.sort(faces, axis=1), axis=0, return_index=True)
+        faces = faces[np.sort(unique_indices)]
+    triangle_faces = [tuple(int(index) + 1 for index in face) for face in faces]
+    patient_vertices = _taubin_smooth([tuple(point) for point in patient_points], triangle_faces, iterations=28)
+    safe = re.sub(r"[^A-Za-z0-9_.-]", "_", object_id)
+    path = root / "derived" / f"{safe}.obj"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w", encoding="utf-8") as handle:
+        handle.write(f"# Phasemed marching-cubes surface for {object_id}\n")
+        for vertex in patient_vertices:
+            handle.write(f"v {vertex[0]:.5f} {vertex[1]:.5f} {vertex[2]:.5f}\n")
+        for face in triangle_faces:
+            handle.write(f"f {' '.join(str(index) for index in face)}\n")
+    area = mesh_surface_area(np.asarray(patient_vertices, dtype=np.float64), faces)
+    return f"mesh:{object_id}", path.relative_to(root).as_posix(), len(patient_vertices), len(triangle_faces), round(float(area), 3)
+
+
 def box_volume(box: BoundingBox) -> float:
     return math.prod(max(0.0, box.max[i] - box.min[i]) for i in range(3))
 
@@ -348,7 +457,16 @@ def box_surface_area(box: BoundingBox) -> float:
 
 def compile_study(study_id: str, root: Path, update: Callable[[str, int, str], None]) -> PatientModel:
     update("Validate DICOM study", 8, "Indexing readable instances")
-    study, series = index_directory(root, study_id)
+    study, indexed_series = index_directory(root, study_id)
+    # Adapter outputs live beneath the immutable source study. Never feed
+    # those derived instances back into a later compiler run as raw input.
+    series = []
+    for row in indexed_series:
+        instances = [item for item in row.get("instances", []) if not Path(item.get("path", "")).parts or Path(item.get("path", "")).parts[0] != "derived"]
+        if instances:
+            series.append({**row, "instances": instances, "instance_count": len(instances)})
+    study.image_count = sum(int(row.get("instance_count") or 0) for row in series)
+    study.series_count = len(series)
     update("Reconstruct source volume", 22, f"Found {study.image_count} instances across {study.series_count} series")
     primary = max(series, key=lambda item: int(item.get("instance_count") or 0))
     stats = extract_pixels(root, primary.get("instances", []))

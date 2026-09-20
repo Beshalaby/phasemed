@@ -25,6 +25,23 @@ if str(PROJECT_ROOT) not in sys.path:
 from backend.dicom import index_directory
 
 
+def task_for_modality(modality: str | None, override: str | None = None) -> str:
+    """Choose the TotalSegmentator model family for the source modality.
+
+    An explicit environment override remains useful for specialist tasks, but
+    the safe default must not send MR pixels through the CT ``total`` model.
+    """
+    if override:
+        return override
+    return "total_mr" if str(modality or "").upper() == "MR" else "total"
+
+
+def fast_mode_for_task(task: str, default: str | None, mr_override: str | None = None) -> bool:
+    """Allow high-resolution MR while retaining the faster CT default."""
+    value = mr_override if task.endswith("_mr") and mr_override is not None else default
+    return str(value or "0").lower() in {"1", "true", "yes"}
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Run TotalSegmentator and emit DICOM SEG for Phasemed")
     parser.add_argument("--input-dir", required=True, type=Path)
@@ -51,9 +68,9 @@ def main() -> int:
         if not list(source_dir.glob("*.dcm")):
             raise RuntimeError("The selected image series has no readable DICOM files")
 
-        task = os.getenv("PHASEMED_TS_TASK", "total")
+        task = task_for_modality(primary.get("modality"), os.getenv("PHASEMED_TS_TASK"))
         device = os.getenv("PHASEMED_TS_DEVICE", "cpu")
-        fast = os.getenv("PHASEMED_TS_FAST", "0").lower() in {"1", "true", "yes"}
+        fast = fast_mode_for_task(task, os.getenv("PHASEMED_TS_FAST"), os.getenv("PHASEMED_TS_FAST_MR"))
         model_size = os.getenv("PHASEMED_TS_MODEL_SIZE", "big")
         roi_subset = os.getenv("PHASEMED_TS_ROI_SUBSET")
         output = args.output_dir / "totalsegmentator.seg.dcm"

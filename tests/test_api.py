@@ -20,6 +20,20 @@ def test_landing_page_and_workstation_routes():
     assert 'data-temporal-mode="overlay"' in workspace.text
     assert 'data-temporal-mode="difference"' in workspace.text
     assert 'data-temporal-mode="morph"' in workspace.text
+    assert 'data-tool="select"' not in workspace.text
+    assert 'data-tool="rotate"' not in workspace.text
+    assert 'data-tool="pan"' not in workspace.text
+    assert 'data-tool="zoom"' not in workspace.text
+    assert 'class="tool-control model-only-control" data-tool="measure"' in workspace.text
+    assert 'class="tool-control model-only-control" id="sceneNeighbors"' in workspace.text
+    assert 'class="tool-control model-only-control" id="sceneFit"' in workspace.text
+    assert 'id="sceneZoomOut"' not in workspace.text
+    assert 'id="sceneAnatomy"' in workspace.text
+    assert 'id="sceneAnatomyLabel"' in workspace.text
+    assert 'id="sliceInput"' in workspace.text
+    assert 'data-tool="path"' in workspace.text
+    assert 'id="hologramExit"' in workspace.text
+    assert "Pepper's Ghost hologram preview" in workspace.text
 
 
 def dicom_bytes(tmp_path: Path) -> bytes:
@@ -75,6 +89,10 @@ def test_api_import_compile_and_query(tmp_path: Path, monkeypatch):
     job = client.get(f"/api/jobs/{compile_response.json()['job']['id']}").json()
     assert job["status"] == "completed"
     assert client.post(f"/api/studies/{study_id}/compile").status_code == 409
+    rebuild_response = client.post(f"/api/studies/{study_id}/compile", params={"rebuild": "true"})
+    assert rebuild_response.status_code == 200
+    rebuild_job = client.get(f"/api/jobs/{rebuild_response.json()['job']['id']}").json()
+    assert rebuild_job["status"] == "completed"
     assert any(event["type"] == "study.imported" for event in client.get("/api/audit-events").json()["events"])
 
     stored_study = client.get(f"/api/studies/{study_id}").json()
@@ -89,8 +107,8 @@ def test_api_import_compile_and_query(tmp_path: Path, monkeypatch):
     assert reviewed.status_code == 200 and reviewed.json()["review_status"] == "confirmed"
     history_after_review = client.get(f"/api/models/{model_id}/history")
     assert history_after_review.status_code == 200
-    assert history_after_review.json()["current_version"] == 2
-    assert [item["version"] for item in history_after_review.json()["revisions"]] == [1, 2]
+    assert history_after_review.json()["current_version"] == 3
+    assert [item["version"] for item in history_after_review.json()["revisions"]] == [1, 2, 3]
     assert client.get(f"/api/models/{model_id}/revisions/1").json()["snapshot"]["version"] == 1
     assert client.post(f"/api/models/{model_id}/spatial", json={"operation": "trajectory", "start": [0, 0, 0], "end": [4, 0, 0]}).json()["length_mm"] == 4
     assert client.get(f"/api/graph/{model_id}").json()["@id"] == model_id
@@ -100,15 +118,15 @@ def test_api_import_compile_and_query(tmp_path: Path, monkeypatch):
     assert context_response.status_code == 200
     assert client.get(f"/api/models/{model_id}").json()["capabilities"]["clinical_context"] == "available"
     assert client.post(f"/api/models/{model_id}/context-query", json={"query": "follow-up"}).json()["results"]
-    assert client.get(f"/api/patient-models/{model_id}/history").json()["current_version"] == 3
+    assert client.get(f"/api/patient-models/{model_id}/history").json()["current_version"] == 4
     audit = client.get(f"/api/models/{model_id}/audit")
     assert audit.status_code == 200 and any(event["type"] == "context.imported" for event in audit.json()["events"])
     assert client.get("/api/audit-events", params={"subject": model_id}).json()["events"]
 
     with TestClient(main.app) as restarted:
         assert restarted.get(f"/api/studies/{study_id}").json()["status"] == "ready"
-        assert restarted.get(f"/api/models/{model_id}").json()["version"] == 3
-        assert restarted.get(f"/api/models/{model_id}/history").json()["current_version"] == 3
+        assert restarted.get(f"/api/models/{model_id}").json()["version"] == 4
+        assert restarted.get(f"/api/models/{model_id}/history").json()["current_version"] == 4
 
 
 def test_cstore_staging_can_be_promoted_to_local_study(tmp_path: Path, monkeypatch):

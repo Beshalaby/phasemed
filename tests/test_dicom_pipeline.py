@@ -5,7 +5,7 @@ from pydicom.dataset import FileDataset, FileMetaDataset
 from pydicom.uid import ExplicitVRLittleEndian, SecondaryCaptureImageStorage, generate_uid
 
 from backend.compiler import compile_study
-from backend.dicom import index_directory
+from backend.dicom import index_directory, load_series_volume, volume_plane_png
 
 
 def write_dicom(path: Path, study_uid: str, series_uid: str, index: int) -> None:
@@ -53,3 +53,17 @@ def test_dicom_index_and_compile(tmp_path: Path):
     assert model.capabilities["unlabeled_intensity_regions"] == "available"
     assert model.capabilities["dicom_ingestion"] == "available"
     assert updates[-1][1] == 100
+
+
+def test_volume_cache_and_axial_index_render_distinct_source_frames(tmp_path: Path):
+    study_uid = generate_uid(); series_uid = generate_uid()
+    for index in range(3):
+        write_dicom(tmp_path / f"slice-{index}.dcm", study_uid, series_uid, index)
+    _, series = index_directory(tmp_path, "study-review")
+    first_volume = load_series_volume(tmp_path, series[0])
+    assert first_volume is load_series_volume(tmp_path, series[0])
+    first_png, first_metadata = volume_plane_png(tmp_path, series[0], "axial", 0, 32, 64)
+    last_png, last_metadata = volume_plane_png(tmp_path, series[0], "axial", 2, 32, 64)
+    assert first_metadata["index"] == 0
+    assert last_metadata["index"] == 2
+    assert first_png != last_png

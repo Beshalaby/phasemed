@@ -13,6 +13,17 @@ from pydicom.uid import ExplicitVRLittleEndian, SecondaryCaptureImageStorage, ge
 pytest.importorskip("SimpleITK")
 
 
+def test_totalsegmentator_task_tracks_source_modality():
+    from scripts.run_totalsegmentator import fast_mode_for_task, task_for_modality
+
+    assert task_for_modality("CT") == "total"
+    assert task_for_modality("MR") == "total_mr"
+    assert task_for_modality("mr") == "total_mr"
+    assert task_for_modality("MR", "tissue_types_mr") == "tissue_types_mr"
+    assert fast_mode_for_task("total", "1") is True
+    assert fast_mode_for_task("total_mr", "1", "0") is False
+
+
 def write_series(root: Path, shift: float) -> None:
     study_uid = generate_uid()
     series_uid = generate_uid()

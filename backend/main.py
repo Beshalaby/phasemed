@@ -266,7 +266,7 @@ def get_job(job_id: str) -> JobState:
     return JobState.model_validate_json(row["payload"])
 
 
-def compile_in_background(job_id: str, study_id: str) -> None:
+def compile_in_background(job_id: str, study_id: str, rebuild: bool = False) -> None:
     job = get_job(job_id)
     job.status = "running"; job.updated_at = now_iso(); save_job(job)
     try:
@@ -274,20 +274,71 @@ def compile_in_background(job_id: str, study_id: str) -> None:
             current = get_job(job_id); current.stage = stage; current.progress = progress; current.message = message; current.updated_at = now_iso(); save_job(current)
         model = compile_study(study_id, STUDY_ROOT / study_id, update)
         model = attach_temporal_history(model)
-        save_model(model, reason="compiled")
-        audit_event("model.compiled", model.id, {"study_id": study_id, "object_count": len(model.objects), "relationship_count": len(model.relationships)})
+        save_model(model, reason="recompiled" if rebuild else "compiled", bump_version=rebuild)
+        audit_event("model.recompiled" if rebuild else "model.compiled", model.id, {"study_id": study_id, "object_count": len(model.objects), "relationship_count": len(model.relationships)})
         study = get_study(study_id); study["status"] = "ready"; study["model_id"] = model.id
         conn = db(); conn.execute("UPDATE studies SET payload=? WHERE id=?", (json.dumps(study), study_id)); conn.commit(); conn.close()
         job = get_job(job_id); job.status = "completed"; job.stage = "Ready"; job.progress = 100; job.message = "PatientModel persisted"; job.updated_at = now_iso(); save_job(job)
     except Exception as exc:
-        study = get_study(study_id); study["status"] = "failed"
+        study = get_study(study_id); study["status"] = "ready" if rebuild and _has_persisted_model(study.get("model_id")) else "failed"
         conn = db(); conn.execute("UPDATE studies SET payload=? WHERE id=?", (json.dumps(study), study_id)); conn.commit(); conn.close()
         job = get_job(job_id); job.status = "failed"; job.stage = "Failed"; job.error = str(exc); job.message = "Compilation stopped without fabricating derived data"; job.updated_at = now_iso(); save_job(job)
 
 
 @app.get("/api/health")
 def health() -> dict:
-    return {"status": "ok", "service": "phasemed-local-api", "version": app.version, "capabilities": {**capability_status(), **adapter_status()}}
+    return {"status": "ok", "service": "phasemed-local-api", "version": app.version, "capabilities": {**capability_status(), **adapter_status(), **voice_status()}}
+
+
+@app.get("/api/voice/status")
+def voice_capability() -> dict:
+    return voice_status()
+
+
+@app.post("/api/voice/warm")
+async def voice_warm() -> dict:
+    """Load the local speech model before the first command so the demo never waits on it."""
+    status = voice_status()
+    if status.get("voice_input") != "configured" or not status.get("voice_engine", "").startswith("local-whisper"):
+        return {**status, "warm": False}
+    try:
+        await asyncio.to_thread(voice_warm_local)
+    except Exception as error:  # a missing download stays non-fatal; the command path reports it
+        return {**status, "warm": False, "detail": str(error)}
+    return {**status, "warm": True}
+
+
+@app.post("/api/patient-models/{model_id}/voice-command")
+async def patient_model_voice_command(model_id: str, file: UploadFile | None = File(None), transcript: str = Form("")) -> dict:
+    """Turn one spoken clip (or a supplied transcript) into PatientObject targets.
+
+    ElevenLabs only produces text; which structures that text selects is decided
+    locally by `voice.resolve_command`, so the mapping stays deterministic and auditable.
+    """
+    model = load_model(model_id)
+    spoken = transcript.strip()
+    if file is not None:
+        raw = await file.read()
+        if len(raw) > MAX_VOICE_AUDIO_BYTES:
+            raise HTTPException(413, "audio clip is larger than 12 MB")
+        try:
+            vocabulary = [obj.label for obj in model.objects if obj.type != "volume"]
+            # Transcription is a second of CPU work; keep it off the event loop so mesh
+            # and slice requests are not stalled behind a spoken command.
+            spoken = await asyncio.to_thread(
+                voice_transcribe,
+                raw,
+                filename=file.filename or "clip.webm",
+                content_type=file.content_type or "audio/webm",
+                vocabulary=vocabulary,
+            )
+        except RuntimeError as error:
+            raise HTTPException(502, str(error)) from error
+    if not spoken:
+        raise HTTPException(400, "no audio clip or transcript supplied")
+    result = resolve_command(spoken, model.objects)
+    audit_event("voice.command", model_id, {"transcript": result["transcript"], "intent": result["intent"], "targets": result["targets"]})
+    return result
 
 
 @app.get("/api/adapters/status")
@@ -466,16 +517,16 @@ def study_detail(study_id: str) -> dict:
 
 
 @app.post("/api/studies/{study_id}/compile")
-def start_compile(study_id: str, background: BackgroundTasks) -> dict:
+def start_compile(study_id: str, background: BackgroundTasks, rebuild: bool = Query(default=False)) -> dict:
     study = get_study(study_id)
     if study.get("status") == "compiling":
         raise HTTPException(409, "Study compilation is already in progress")
-    if study.get("status") == "ready" and _has_persisted_model(study.get("model_id")):
+    if not rebuild and study.get("status") == "ready" and _has_persisted_model(study.get("model_id")):
         raise HTTPException(409, "Study is already compiled; review the existing PatientModel")
     study["status"] = "compiling"
     conn = db(); conn.execute("UPDATE studies SET payload=? WHERE id=?", (json.dumps(study), study_id)); conn.commit(); conn.close()
     job = JobState(id=f"job-{uuid.uuid4().hex[:12]}", study_id=study_id)
-    save_job(job); background.add_task(compile_in_background, job.id, study_id)
+    save_job(job); background.add_task(compile_in_background, job.id, study_id, rebuild)
     return {"job": job.model_dump()}
 
 
