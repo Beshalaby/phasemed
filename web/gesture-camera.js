@@ -8,6 +8,12 @@
   const VISION_BUNDLE = `${VISION_CDN}/vision_bundle.mjs`;
   const VISION_WASM = `${VISION_CDN}/wasm`;
   const HAND_MODEL = "https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task";
+  // Hand tracking does not need the full camera stream rate. Keeping the input
+  // small and sampling it at a stable rate leaves the main thread responsive
+  // for the hologram renderer and still feels immediate for gestures.
+  const CAMERA_WIDTH = 640;
+  const CAMERA_HEIGHT = 360;
+  const INFERENCE_INTERVAL_MS = 50; // 20 fps maximum
   const CONNECTIONS = [
     [0, 1], [1, 2], [2, 3], [3, 4],
     [0, 5], [5, 6], [6, 7], [7, 8],
@@ -59,6 +65,11 @@
       this.detector = null;
       this.raf = null;
       this.lastVideoTime = -1;
+      this.lastInferenceAt = 0;
+      this.overlayContext = overlay?.getContext("2d") || null;
+      this.overlayWidth = 0;
+      this.overlayHeight = 0;
+      this.overlayRatio = 0;
       this.running = false;
       this.loading = false;
     }
@@ -89,7 +100,12 @@
       try {
         this.stream = await navigator.mediaDevices.getUserMedia({
           audio: false,
-          video: { facingMode: { ideal: "user" }, width: { ideal: 960 }, height: { ideal: 540 } },
+          video: {
+            facingMode: { ideal: "user" },
+            width: { ideal: CAMERA_WIDTH },
+            height: { ideal: CAMERA_HEIGHT },
+            frameRate: { ideal: 30, max: 30 },
+          },
         });
         this.video.srcObject = this.stream;
         await this.video.play();
@@ -98,6 +114,7 @@
         this.detector = await this.createDetector(vision);
         this.running = true;
         this.lastVideoTime = -1;
+        this.lastInferenceAt = 0;
         this.onStatus("ready", "Camera ready · show one or two hands");
         this.loop();
       } catch (error) {
@@ -125,18 +142,23 @@
     }
 
     clearOverlay() {
-      const context = this.overlay?.getContext("2d");
-      if (context) context.clearRect(0, 0, this.overlay.width, this.overlay.height);
+      if (this.overlayContext) this.overlayContext.clearRect(0, 0, this.overlay.width, this.overlay.height);
     }
 
     draw(hands) {
       if (!this.overlay || !this.video.videoWidth) return;
       const width = this.video.clientWidth || this.video.videoWidth;
       const height = this.video.clientHeight || this.video.videoHeight;
-      const ratio = window.devicePixelRatio || 1;
-      this.overlay.width = Math.max(1, Math.round(width * ratio));
-      this.overlay.height = Math.max(1, Math.round(height * ratio));
-      const context = this.overlay.getContext("2d");
+      const ratio = Math.min(window.devicePixelRatio || 1, 1.5);
+      if (this.overlayWidth !== width || this.overlayHeight !== height || this.overlayRatio !== ratio) {
+        this.overlay.width = Math.max(1, Math.round(width * ratio));
+        this.overlay.height = Math.max(1, Math.round(height * ratio));
+        this.overlayWidth = width;
+        this.overlayHeight = height;
+        this.overlayRatio = ratio;
+      }
+      const context = this.overlayContext;
+      if (!context) return;
       context.setTransform(ratio, 0, 0, ratio, 0, 0);
       context.clearRect(0, 0, width, height);
       hands.forEach((hand, index) => {
@@ -162,12 +184,14 @@
 
     loop() {
       if (!this.running || !this.detector) return;
-      if (this.video.readyState >= 2 && this.video.currentTime !== this.lastVideoTime) {
+      const now = performance.now();
+      if (this.video.readyState >= 2 && this.video.currentTime !== this.lastVideoTime && now - this.lastInferenceAt >= INFERENCE_INTERVAL_MS) {
         this.lastVideoTime = this.video.currentTime;
-        const result = this.detector.detectForVideo(this.video, performance.now());
+        this.lastInferenceAt = now;
+        const result = this.detector.detectForVideo(this.video, now);
         const hands = (result.landmarks || []).map(classify);
         this.draw(hands);
-        this.onFrame({ hands, timestamp: performance.now() });
+        this.onFrame({ hands, timestamp: now });
       }
       this.raf = requestAnimationFrame(() => this.loop());
     }

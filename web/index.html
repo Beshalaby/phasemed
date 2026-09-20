@@ -4,15 +4,17 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta name="theme-color" content="#fbfbfd" />
-  <meta name="description" content="Phasemed — a spatial patient model workstation." />
-  <title>Phasemed · Spatial patient model</title>
-  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='9' fill='%23fbfbfd'/%3E%3Crect x='7' y='9' width='15' height='6' rx='3' transform='rotate(-45 7 9)' fill='%231d1d1f'/%3E%3Crect x='13' y='16' width='15' height='6' rx='3' transform='rotate(-45 13 16)' fill='%231d1d1f'/%3E%3C/svg%3E" />
+  <meta name="description" content="Phasmed — a spatial patient model workstation." />
+  <title>Phasmed · Spatial patient model</title>
+  <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin />
+  <link rel="preconnect" href="https://storage.googleapis.com" crossorigin />
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='9' fill='%2306090a'/%3E%3Crect x='7' y='9' width='15' height='6' rx='3' transform='rotate(-45 7 9)' fill='%237fe3d0'/%3E%3Crect x='13' y='16' width='15' height='6' rx='3' transform='rotate(-45 13 16)' fill='%237fe3d0'/%3E%3C/svg%3E" />
   <link rel="stylesheet" href="/assets/styles.css" />
 </head>
 <body>
   <div class="app-shell">
     <header class="topbar">
-      <a class="brand" href="/" aria-label="Phasemed"><span class="brand-glyph" aria-hidden="true"><i></i><i></i></span><span class="brand-wordmark">Phasemed</span></a>
+      <a class="brand" href="/" aria-label="Phasmed"><span class="brand-mark" aria-hidden="true"><i></i><i></i></span><span>Phasmed</span></a>
       <div class="topbar-actions">
         <button class="quiet-action topbar-action" id="gatewayButton" aria-label="Open imaging sources" title="Browse connected imaging sources"><span class="action-icon" aria-hidden="true">⌁</span><span>Imaging sources</span></button>
         <button class="quiet-action topbar-action" id="contextImport" title="Add notes and other evidence to the model"><span class="action-icon" aria-hidden="true">＋</span><span>Add evidence</span></button>
@@ -31,11 +33,13 @@
 
     <div class="commandbar" id="commandbar">
       <div class="series-control" id="seriesControl"><span class="file-icon">▧</span><strong id="seriesTitle"></strong><span id="seriesChevron">⌄</span></div>
-      <button class="tool-control model-only-control" data-tool="measure"><span>╱</span>Measure</button>
-      <button class="tool-control model-only-control" id="sceneNeighbors" aria-pressed="false" title="Show spatial links from the selected structure"><span>⋯</span>Links</button>
-      <button class="tool-control model-only-control" id="sceneIsolate" aria-pressed="false" title="Show only the selected structure"><span>◉</span>Isolate</button>
-      <button class="tool-control model-only-control" id="sceneAnatomy" aria-pressed="false"><span>◒</span><span id="sceneAnatomyLabel">Anatomy</span></button>
-      <button class="tool-control model-only-control" id="resetButton"><span>↺</span>Reset</button>
+      <div class="command-tools" aria-label="Model tools">
+        <button class="tool-control model-only-control" data-tool="measure"><span>╱</span>Measure</button>
+        <button class="tool-control model-only-control" id="sceneNeighbors" aria-pressed="false" title="Show spatial links from the selected structure"><span>⋯</span>Links</button>
+        <button class="tool-control model-only-control" id="sceneIsolate" aria-pressed="false" title="Show only the selected structure"><span>◉</span>Isolate</button>
+        <button class="tool-control model-only-control" id="sceneAnatomy" aria-pressed="false"><span>◒</span><span id="sceneAnatomyLabel">Anatomy</span></button>
+        <button class="tool-control model-only-control" id="resetButton"><span>↺</span>Reset</button>
+      </div>
       <div class="command-spacer"></div>
       <div class="view-switch" role="tablist" aria-label="Workspace views">
         <button class="mode-item active" data-mode="model" role="tab">Model</button>

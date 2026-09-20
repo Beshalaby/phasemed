@@ -102,20 +102,21 @@ void main() {
   function setMode(next) { if (next === mode) return; mode = next; focusIndex = 0; document.body.dataset.scene = next; applyMode(); }
 
   // ---------- camera maths (world is patient LPS mm; yaw 0 looks at the anterior surface) ----------
-  function matrices(yaw, pitch, roll, aspect, centre, distance) {
+  function matrices(yaw, pitch, roll, aspect, centre, distance, mirrorX = false) {
     const cy = Math.cos(yaw), sy = Math.sin(yaw), cp = Math.cos(pitch), sp = Math.sin(pitch), cr = Math.cos(roll), sr = Math.sin(roll);
     let R = [cy, -sy, 0], Up = [sy * sp, cy * sp, cp]; const T = [-sy * cp, -cy * cp, sp];
     [R, Up] = [[0, 1, 2].map((i) => R[i] * cr + Up[i] * sr), [0, 1, 2].map((i) => Up[i] * cr - R[i] * sr)];
     const t = [R, Up, T].map((row) => -(row[0] * centre[0] + row[1] * centre[1] + row[2] * centre[2]));
     const view = new Float32Array([R[0], Up[0], T[0], 0, R[1], Up[1], T[1], 0, R[2], Up[2], T[2], 0, t[0], t[1], t[2] - distance, 1]);
     const f = 1 / Math.tan(FOV / 2), near = Math.max(10, distance - bounds.radius * 3), far = distance + bounds.radius * 3;
-    const proj = new Float32Array([f / aspect, 0, 0, 0, 0, f, 0, 0, 0, 0, (far + near) / (near - far), -1, 0, 0, 2 * far * near / (near - far), 0]);
-    return { view, proj, basis: [R, Up, T], centre, distance, f, aspect };
+    const proj = new Float32Array([(mirrorX ? -1 : 1) * f / aspect, 0, 0, 0, 0, f, 0, 0, 0, 0, (far + near) / (near - far), -1, 0, 0, 2 * far * near / (near - far), 0]);
+    return { view, proj, basis: [R, Up, T], centre, distance, f, aspect, mirrorX };
   }
   function toScreen(point, m, width, height, shift, lift = 0) {
     const q = [point[0] - m.centre[0], point[1] - m.centre[1], point[2] - m.centre[2]]; const [R, Up, T] = m.basis;
     const x = R[0] * q[0] + R[1] * q[1] + R[2] * q[2], y = Up[0] * q[0] + Up[1] * q[1] + Up[2] * q[2], depth = m.distance - (T[0] * q[0] + T[1] * q[1] + T[2] * q[2]);
-    return [(m.f / m.aspect * x / depth + shift + 1) * width / 2, (1 - m.f * y / depth - lift) * height / 2];
+    const screenX = ((m.mirrorX ? -1 : 1) * m.f / m.aspect * x / depth + shift + 1) * width / 2;
+    return [screenX, (1 - m.f * y / depth - lift) * height / 2];
   }
 
   // ---------- drawing ----------
@@ -164,7 +165,7 @@ void main() {
       ink.strokeStyle = "rgba(8, 121, 107, .45)"; ink.lineWidth = dpr; ink.save(); ink.translate(cx, cy); ink.rotate(Math.PI / 4); ink.strokeRect(-cell * 0.11, -cell * 0.11, cell * 0.22, cell * 0.22); ink.restore();
       if (!narrow) label(cx, cy + cell * 1.62, "Hologram", "four views · hold space to speak", dpr, "center");
     } else {
-      const m = matrices(yaw, pitch, 0, w / h, cam.centre, cam.dist); drawObjects(m, cam.shift, cam.lift, active === "sweep" ? 1 : 0, sweepZ);
+      const m = matrices(yaw, pitch, 0, w / h, cam.centre, cam.dist, active === "organs"); drawObjects(m, cam.shift, cam.lift, active === "sweep" ? 1 : 0, sweepZ);
       if (!narrow && objects.length) annotate(active, m, w, h, dpr, sweepZ);
     }
     requestAnimationFrame(frame);
@@ -226,7 +227,7 @@ void main() {
       if (rel.type === "inside") links.push({ id: rel.target_object_id, text: "contains it", rank: -1 }); else if (rel.type === "near" && Number.isFinite(rel.value)) links.push({ id: rel.target_object_id, text: `${number(rel.value)} mm away`, rank: rel.value });
     }); links.sort((a, b) => a.rank - b.rank); links.length = Math.min(links.length, 3); }
     live = { change, links }; setScene(list, { centre: low.map((v, i) => (v + high[i]) / 2), radius: dist3(low, high) / 2, zMin: low[2], zMax: high[2] });
-    if (change && Number.isFinite(change.percent)) { $("statDelta").textContent = `${change.percent > 0 ? "+" : ""}${number(change.percent)}%`; $("statFrom").textContent = number(change.from); $("statTo").textContent = number(change.to); $("statSpan").textContent = change.months ? `${change.months} months` : "prior study"; $("statObject").textContent = change.label; $("changeStat").hidden = false; }
+    if ($("changeStat") && change && Number.isFinite(change.percent)) { $("statDelta").textContent = `${change.percent > 0 ? "+" : ""}${number(change.percent)}%`; $("statFrom").textContent = number(change.from); $("statTo").textContent = number(change.to); $("statSpan").textContent = change.months ? `${change.months} months` : "prior study"; $("statObject").textContent = change.label; $("changeStat").hidden = false; }
   }
   function monthsBetween(a, b) { if (!/^\d{8}$/.test(a || "") || !/^\d{8}$/.test(b || "")) return null; const months = (Number(b.slice(0, 4)) - Number(a.slice(0, 4))) * 12 + Number(b.slice(4, 6)) - Number(a.slice(4, 6)); return months > 0 ? months : null; }
 

@@ -4,8 +4,8 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta name="theme-color" content="#f4f7f5" />
-  <meta name="description" content="Phasmed turns a DICOM study into a patient model you can measure, query and follow over time." />
-  <title>Phasmed — Imaging, compiled</title>
+  <meta name="description" content="Phasmed turns CT and other DICOM studies into structured patient models with measurable anatomy, traceable evidence, and data AI can use." />
+  <title>Phasmed — From raw scans to useful data</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='9' fill='%2306090a'/%3E%3Crect x='7' y='9' width='15' height='6' rx='3' transform='rotate(-45 7 9)' fill='%237fe3d0'/%3E%3Crect x='13' y='16' width='15' height='6' rx='3' transform='rotate(-45 13 16)' fill='%237fe3d0'/%3E%3C/svg%3E" />
   <link rel="stylesheet" href="/assets/landing.css?v=420d62a" />
 </head>
@@ -18,20 +18,13 @@
 
   <header class="nav" id="nav">
     <a class="brand" href="/" aria-label="Phasmed home"><span class="brand-mark" aria-hidden="true"><i></i><i></i></span>Phasmed</a>
-    <nav aria-label="Sections">
-      <a href="#how">How</a>
-      <a href="#change">Change</a>
-      <a href="#surfaces">Surfaces</a>
-      <a href="#lab">Model lab</a>
-      <a href="/trial-studio">Trial Studio</a>
-    </nav>
     <a class="nav-cta" href="/workspace">Open workstation <span aria-hidden="true">↗</span></a>
   </header>
 
   <main>
     <section class="hero" id="top" data-scene="hero" aria-labelledby="heroTitle">
-      <h1 id="heroTitle"><span class="rise" style="--d:0">Imaging,</span> <em class="rise" style="--d:1">compiled.</em></h1>
-      <p class="lede rise" style="--d:2">Phasmed turns a DICOM study into a patient model — objects you can measure, query and follow over time.</p>
+      <h1 id="heroTitle"><span class="rise" style="--d:0">Raw scans.</span> <em class="rise" style="--d:1">Useful data.</em></h1>
+      <p class="lede rise" style="--d:2">Phasmed turns CT and other DICOM studies into structured patient models with measurable anatomy, traceable evidence, and data AI can use.</p>
       <div class="actions rise" style="--d:3">
         <a class="button" href="/workspace">Open workstation <span aria-hidden="true">↗</span></a>
         <a class="quiet-link" href="#how">How it works <span aria-hidden="true">↓</span></a>
@@ -40,34 +33,24 @@
 
     <section class="chapter" id="how" aria-labelledby="howTitle">
       <header class="chapter-head" data-scene="how" data-reveal>
-        <h2 id="howTitle">The study is the input. <em>The model is the product.</em></h2>
+        <h2 id="howTitle">From raw scans to structured data. <em>In three steps.</em></h2>
       </header>
       <ol class="steps">
-        <li data-scene="sweep" data-reveal><span class="step-no">01</span><h3>Index</h3><p>DICOM in. Validated, indexed and kept on your machine.</p></li>
-        <li data-scene="organs" data-reveal><span class="step-no">02</span><h3>Compile</h3><p>Volumes and segmentations become objects with real geometry.</p></li>
-        <li data-scene="relations" data-reveal><span class="step-no">03</span><h3>Relate</h3><p>Distance, containment and adjacency — computed, never guessed.</p></li>
+        <li data-scene="sweep" data-reveal><span class="step-no">01</span><h3>Import</h3><p>Load CT and other DICOM studies from a folder or gateway. Phasmed validates each series and records where it came from.</p></li>
+        <li data-scene="organs" data-reveal><span class="step-no">02</span><h3>Build</h3><p>Convert volumes and segmentations into labeled 3D objects with coordinates, measurements, and links to the source images.</p></li>
+        <li data-scene="relations" data-reveal><span class="step-no">03</span><h3>Analyze</h3><p>Measure relationships and change across studies, then review, query, or export the results for people and AI.</p></li>
       </ol>
     </section>
 
     <section class="chapter" id="change" data-scene="finding" aria-labelledby="changeTitle">
       <div data-reveal>
-        <p class="eyebrow">02 — Change</p>
-        <h2 id="changeTitle">Growth is a <em>number.</em></h2>
-        <p class="body">Follow-ups link to priors object by object. Every delta is measured, and traceable to its source images.</p>
-        <div class="stat" id="changeStat" hidden>
-          <strong id="statDelta">—</strong>
-          <dl>
-            <div><dt>Volume</dt><dd><span id="statFrom">—</span> → <span id="statTo">—</span> mm³</dd></div>
-            <div><dt>Interval</dt><dd id="statSpan">—</dd></div>
-            <div><dt>Object</dt><dd id="statObject">—</dd></div>
-          </dl>
-        </div>
+        <h2 id="changeTitle">Patient models. <em>Useful to AI and doctors.</em></h2>
+        <p class="body">AI can understand structured anatomy, measurements, relationships, and source evidence instead of piecing together raw images and scattered context. Doctors can ask direct questions in the viewer, inspect the evidence, compare studies, and analyze further.</p>
       </div>
     </section>
 
     <section class="chapter" id="surfaces" data-scene="surfaces" aria-labelledby="surfacesTitle">
       <div data-reveal>
-        <p class="eyebrow">03 — Surfaces</p>
         <h2 id="surfacesTitle">One model. <em>Five ways in.</em></h2>
       </div>
       <ul class="surfaces" id="surfaceList" data-reveal>
@@ -81,9 +64,8 @@
 
     <section class="chapter closing" id="lab" data-scene="rest" aria-labelledby="labTitle">
       <div data-reveal>
-        <p class="eyebrow">Model lab</p>
         <h2 id="labTitle">Patient models in. <em>Useful models out.</em></h2>
-        <p class="body">Train and validate on geometry features. Labels stay yours; every prediction shows what drove it.</p>
+        <p class="body">Use the model to review anatomy, compare follow-ups, query evidence and export structured data. Train and validate AI on measured geometry and provenance instead of raw pixels, with every result linked back to its source.</p>
         <div class="actions"><a class="button large" href="/workspace">Open workstation <span aria-hidden="true">↗</span></a><a class="quiet-link" href="/trial-studio">Run a trial simulation <span aria-hidden="true">↗</span></a></div>
       </div>
     </section>

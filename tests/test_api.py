@@ -20,6 +20,10 @@ def test_landing_page_and_workstation_routes():
     assert "Start with a study" in workspace.text
     assert 'id="emptyDemo"' in workspace.text
     assert 'id="emptyImport"' in workspace.text
+    # The old rail header duplicated "Studies" and "Import a study" above
+    # the library tabs, collapsing the left rail when mixed with the current UI.
+    assert 'class="rail-patient"' not in workspace.text
+    assert 'id="newStudy"' not in workspace.text
     assert 'data-temporal-mode="overlay"' in workspace.text
     assert 'data-temporal-mode="difference"' in workspace.text
     assert 'data-temporal-mode="morph"' in workspace.text

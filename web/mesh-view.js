@@ -95,12 +95,16 @@ void main() {
     draw({ width, height, dpr, viewports, items }) {
       if (!api.ok) return false;
       const W = Math.max(1, Math.round(width * dpr)), H = Math.max(1, Math.round(height * dpr)); if (canvas.width !== W || canvas.height !== H) { canvas.width = W; canvas.height = H; }
-      const ready = items.filter((item) => cache.get(item.key)?.state === "ready");
-      const solid = ready.filter((item) => item.alpha >= .99); const glass = ready.filter((item) => item.alpha < .99).sort((a, b) => a.depth - b.depth);
       gl.useProgram(program); gl.enable(gl.DEPTH_TEST); gl.depthFunc(gl.LEQUAL); gl.disable(gl.CULL_FACE); gl.enable(gl.SCISSOR_TEST); gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
       gl.viewport(0, 0, W, H); gl.scissor(0, 0, W, H); gl.clearColor(0, 0, 0, 0); gl.depthMask(true); gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
       const paint = (item) => { const entry = cache.get(item.key); gl.uniform3fv(uniforms.uColor, item.color); gl.uniform1f(uniforms.uAlpha, item.alpha); gl.bindVertexArray(entry.vao); gl.drawElements(gl.TRIANGLES, entry.count, gl.UNSIGNED_INT, 0); };
       for (const port of viewports) {
+        // A port may provide its own depth-sorted item list. This lets the
+        // hologram render all four views in one WebGL pass instead of clearing
+        // and re-binding the same scene four times.
+        const portItems = port.items || items;
+        const ready = portItems.filter((item) => cache.get(item.key)?.state === "ready");
+        const solid = ready.filter((item) => item.alpha >= .99); const glass = ready.filter((item) => item.alpha < .99).sort((a, b) => a.depth - b.depth);
         const x = Math.round(port.x * dpr), y = H - Math.round((port.y + port.h) * dpr), w = Math.round(port.w * dpr), h = Math.round(port.h * dpr);
         gl.viewport(x, y, w, h); gl.scissor(x, y, w, h); gl.uniformMatrix4fv(uniforms.uMat, false, port.mat); gl.uniformMatrix3fv(uniforms.uView, false, port.view);
         gl.disable(gl.BLEND); gl.depthMask(true); solid.forEach(paint);

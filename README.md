@@ -33,13 +33,19 @@ The same optional stack includes a SimpleITK registration runner. It writes a me
 
 From the workstation's empty state, choose **Explore sample workspace** to load the synthetic studies in one guided flow. The workspace opens the Rivera follow-up by default so the Model, Review, Change, Context, and Procedure surfaces are immediately available; sample studies are marked `SAMPLE` in the library.
 
-With the server running, populate the workstation with four synthetic chest CT studies (three demo patients, one with a baseline and a follow-up):
+With the server running, populate the workstation with seven synthetic studies: four chest CT studies (including a baseline/follow-up pair), plus lower-leg, arm, and brain studies:
 
 ```bash
 ./.venv/bin/python scripts/seed_demo_data.py
 ```
 
-The studies are procedurally generated phantoms, not patient data. Organ shapes are voxelized from the BodyParts3D atlas into a CT series plus a DICOM SEG, and then go through the normal import and compile endpoints, so the resulting PatientModels, meshes, relationships, temporal links, and context bindings come from the real pipeline. The first run downloads about 70 MB of atlas meshes into `.runtime/atlas/bodyparts3d/` (git-ignored, never committed); later runs work offline (`--offline` enforces that). If the download fails, the seeder falls back to an analytic ellipsoid phantom.
+If the original chest samples are already loaded, add just the extra anatomy studies with:
+
+```bash
+./.venv/bin/python scripts/seed_extra_models.py
+```
+
+The studies are procedurally generated phantoms, not patient data. Chest organ shapes are voxelized from the BodyParts3D atlas; the lower-leg, arm, and brain fixtures use explicit analytic geometry. Every study is packaged as a CT series plus a DICOM SEG and goes through the normal import and compile endpoints, so the resulting PatientModels, meshes, relationships, temporal links, and context bindings come from the real pipeline. The first chest seed can download about 70 MB of atlas meshes into `.runtime/atlas/bodyparts3d/` (git-ignored, never committed); later runs work offline (`--offline` enforces that). If the download fails, the chest seeder falls back to an analytic ellipsoid phantom.
 
 To reseed from scratch, stop the server and remove `.runtime/studies`, `.runtime/models`, and `.runtime/phasemed.sqlite3`; keep `.runtime/atlas` to avoid downloading again.
 

@@ -13,7 +13,7 @@ const state = {
   volume: null, slice: 0, windowCenter: 40, windowWidth: 400, timelineValue: 100, temporalMode: "current", toastTimer: null, previewToken: 0,
   theme: localStorage.getItem("phasemed-theme") || "light", activeTool: "rotate", sceneYaw: .3, scenePitch: .15, sceneZoom: 1, scenePanX: 0, scenePanY: 0, drag: null,
   measurePoints: [], measureResult: null, timelineTimer: null, sliceRefreshTimer: null, modelLabDataset: null,
-  holoSpin: true, holoYaw: 0, holoPitch: .15, holoZoom: 1, holoPanX: 0, holoPanY: 0, holoDrag: null, holoRaf: null, holoLast: 0,
+  holoSpin: true, holoYaw: 0, holoPitch: .15, holoZoom: 1, holoPanX: 0, holoPanY: 0, holoDrag: null, holoRaf: null, holoLast: 0, holoDrawLast: 0,
   highlights: [], voiceState: "idle", voiceRecorder: null, voiceChunks: [], voiceTranscript: "", voiceHeld: false, voiceStartedAt: 0,
   gestureCamera: null, gestureFrame: null, gesturePinch: null, gestureSpan: null, gestureSwipe: null, gesturePoint: null, gestureFistSince: 0, gestureActionAt: 0, gesturePose: "off", gestureHandCount: 0, gestureMomentumRaf: null, gestureVoiceSince: 0, gestureVoiceAnchor: null, gestureVoiceActive: false, gesturePreviewVisible: localStorage.getItem("phasemed-gesture-preview") !== "hidden", gestureSliceDrag: null, gestureScanPreview: false, gestureScanUrl: "",
 };
@@ -454,7 +454,7 @@ function drawHologram() {
     { x: centerX, y: centerY + radius, rotation: Math.PI, yaw: state.holoYaw + Math.PI },
     { x: centerX - radius, y: centerY, rotation: -Math.PI / 2, yaw: state.holoYaw + Math.PI * 1.5 },
   ];
-  views.forEach((view) => {
+  const plans = views.map((view, index) => {
     const cam = camForFit(bounds, tile, tile, view.yaw, state.holoPitch, 1, 0, 0);
     // Each part keeps its own tint so the hologram reads as distinct anatomy, not one blue blob.
     const items = []; const fallback = [];
@@ -464,10 +464,32 @@ function drawHologram() {
         items.push({ key: MeshView.key(modelId, item.id), color: hexRgb(entryColor(entry, meshColor)), alpha: entry.ghost ? holoAlpha(.2) : holoAlpha(meshAlpha(item)), depth: selected || isHighlighted(item) ? Infinity : project(centroidOf(item), cam)[2] });
       } else fallback.push({ item, selected });
     });
-    let rendered = false;
-    if (items.length) { const matrices = camMatrices(cam); rendered = MeshView.draw({ width: tile, height: tile, dpr: window.devicePixelRatio || 1, viewports: [{ x: 0, y: 0, w: tile, h: tile, ...matrices }], items }); }
+    return { index, cam, items, fallback };
+  });
+  // Render the four hologram tiles in one WebGL pass. The previous path
+  // cleared and re-bound the same meshes once per view, which competed with
+  // camera inference on the main thread.
+  const renderDpr = Math.min(window.devicePixelRatio || 1, 1.25);
+  const meshPlans = plans.filter((plan) => plan.items.length);
+  const rendered = meshPlans.length && MeshView.draw({
+    width: tile * 2,
+    height: tile * 2,
+    dpr: renderDpr,
+    viewports: meshPlans.map((plan) => ({
+      x: (plan.index % 2) * tile,
+      y: Math.floor(plan.index / 2) * tile,
+      w: tile,
+      h: tile,
+      ...camMatrices(plan.cam),
+      items: plan.items,
+    })),
+    items: [],
+  });
+  const pixelTile = Math.max(1, Math.round(tile * renderDpr));
+  plans.forEach(({ index, cam, items, fallback }) => {
+    const view = views[index];
     ctx.save(); ctx.translate(view.x, view.y); ctx.rotate(view.rotation); ctx.globalCompositeOperation = "screen"; ctx.filter = "brightness(1.4) saturate(1.5) drop-shadow(0 0 9px rgba(120,200,255,.55)) drop-shadow(0 0 22px rgba(90,150,255,.32))";
-    if (rendered) ctx.drawImage(MeshView.canvas, -tile / 2, -tile / 2, tile, tile);
+    if (rendered && items.length) ctx.drawImage(MeshView.canvas, (index % 2) * pixelTile, Math.floor(index / 2) * pixelTile, pixelTile, pixelTile, -tile / 2, -tile / 2, tile, tile);
     drawHighlightMarkers(ctx, cam, available, -tile / 2, -tile / 2);
     fallback.forEach(({ item, selected }) => { const center = project(centroidOf(item), cam); const size = projectSize(item, cam); const [r, g, b] = hexRgb(meshColor(item)).map((v) => Math.round(v * 255)); ctx.fillStyle = `rgba(${r},${g},${b},${holoAlpha(meshAlpha(item))})`; ctx.beginPath(); ctx.ellipse(center[0] - tile / 2, center[1] - tile / 2, Math.max(10, size[0] * .42), Math.max(10, size[1] * .42), 0, 0, Math.PI * 2); ctx.fill(); });
     ctx.restore();
@@ -475,6 +497,7 @@ function drawHologram() {
 }
 // The hologram spins on its own so the Pepper's Ghost pyramid shows every side without a hand on the mouse.
 const HOLO_SPIN_SPEED = .35; // radians per second
+const HOLO_RENDER_INTERVAL_MS = 1000 / 30;
 const HOLO_ZOOM_RANGE = [.4, 2.6];
 function holoTick(timestamp) {
   state.holoRaf = null;
@@ -482,11 +505,14 @@ function holoTick(timestamp) {
   const delta = state.holoLast ? Math.min(.1, (timestamp - state.holoLast) / 1000) : 0;
   state.holoLast = timestamp;
   state.holoYaw = (state.holoYaw + delta * HOLO_SPIN_SPEED) % (Math.PI * 2);
-  drawHologram();
+  if (!state.holoDrawLast || timestamp - state.holoDrawLast >= HOLO_RENDER_INTERVAL_MS) {
+    state.holoDrawLast = timestamp;
+    drawHologram();
+  }
   state.holoRaf = requestAnimationFrame(holoTick);
 }
 function startHoloSpin() { if (state.holoRaf || !state.holoSpin || state.mode !== "hologram") return; state.holoLast = 0; state.holoRaf = requestAnimationFrame(holoTick); }
-function stopHoloSpin() { if (state.holoRaf) cancelAnimationFrame(state.holoRaf); state.holoRaf = null; state.holoLast = 0; }
+function stopHoloSpin() { if (state.holoRaf) cancelAnimationFrame(state.holoRaf); state.holoRaf = null; state.holoLast = 0; state.holoDrawLast = 0; }
 function updateHologramControls() {
   const spin = $("hologramSpin"); if (!spin) return;
   spin.classList.toggle("active", state.holoSpin);

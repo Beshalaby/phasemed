@@ -43,17 +43,11 @@ body[data-scene="how"] .scrim, body[data-scene="organs"] .scrim, body[data-scene
 .brand-mark { position: relative; width: 20px; height: 18px; }
 .brand-mark i { position: absolute; left: 1px; top: 8px; width: 13px; height: 5px; border-radius: 3px; background: var(--phosphor); transform: rotate(-45deg); }
 .brand-mark i + i { left: 7px; top: 9px; opacity: .55; }
-.nav nav { display: flex; gap: clamp(18px, 2.6vw, 38px); margin-left: auto; font: 500 10.5px var(--mono); letter-spacing: .14em; text-transform: uppercase; color: var(--mute); }
-.nav nav a { position: relative; padding: 6px 0; transition: color .25s; }
-.nav nav a:hover { color: var(--ink); }
-.nav nav a::after { content: ""; position: absolute; left: 0; right: 100%; bottom: 0; height: 1px; background: var(--phosphor); transition: right .35s var(--ease); }
-.nav nav a:hover::after { right: 0; }
 .nav-cta { padding: 9px 15px; border: 1px solid var(--rule); border-radius: 999px; font: 500 10.5px var(--mono); letter-spacing: .1em; text-transform: uppercase; transition: border-color .25s, color .25s, background .25s; }
 .nav-cta:hover { border-color: var(--phosphor); color: var(--film); background: var(--phosphor); }
 
 main { position: relative; z-index: 5; }
 section { position: relative; padding: 0 var(--gutter); }
-.eyebrow { margin: 0 0 26px; color: var(--phosphor); font: 500 10.5px var(--mono); letter-spacing: .2em; text-transform: uppercase; }
 
 /* Hero */
 .hero { min-height: 100svh; display: flex; flex-direction: column; justify-content: flex-end; padding-top: 120px; padding-bottom: clamp(44px, 8vh, 96px); }

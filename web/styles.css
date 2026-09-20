@@ -36,11 +36,9 @@ button:focus-visible, input:focus-visible { outline: 1px solid var(--teal); outl
 
 .topbar { height: 48px; display: flex; align-items: center; gap: 24px; padding: 0 14px; border-bottom: 1px solid var(--line); background: #090b0c; }
 .brand { display: flex; align-items: center; gap: 9px; color: var(--text); text-decoration: none; font-size: 14px; font-weight: 700; letter-spacing: -.025em; }
-.brand-glyph { width: 22px; height: 22px; position: relative; display: block; }
-.brand-glyph::before, .brand-glyph::after { content: ""; position: absolute; width: 14px; height: 6px; border-radius: 4px; background: #1d1d1f; transform: rotate(-45deg); }
-.brand-glyph::before { left: 1px; top: 6px; }.brand-glyph::after { left: 8px; top: 12px; }
-.brand-glyph i { display: none; }
-.brand-wordmark { display: grid; gap: 1px; line-height: 1; }.brand-wordmark small { color: var(--muted); font: 6px var(--mono); letter-spacing: .08em; }
+.brand-mark { position: relative; width: 20px; height: 18px; display: block; }
+.brand-mark i { position: absolute; left: 1px; top: 8px; width: 13px; height: 5px; border-radius: 3px; background: #08796b; transform: rotate(-45deg); }
+.brand-mark i + i { left: 7px; top: 9px; opacity: .55; }
 .topbar-actions { margin-left: auto; display: flex; align-items: center; gap: 7px; }
 .local-status { display: flex; align-items: center; gap: 6px; color: var(--muted); font: 9px var(--mono); letter-spacing: .08em; }
 .local-status i, .viewport-live i, .hologram-header > span i { width: 5px; height: 5px; border-radius: 50%; background: var(--teal); }
@@ -95,7 +93,7 @@ button:focus-visible, input:focus-visible { outline: 1px solid var(--teal); outl
 .rail-import, .rail-icon { height: 30px; border: 1px solid var(--line); border-radius: 5px; background: var(--panel-2); color: var(--text-soft); font-size: 8px; }.rail-import { flex: 1; }.rail-import span { color: var(--teal); margin-right: 4px; }.rail-import.secondary { flex: 0 0 53px; }.rail-icon { width: 29px; border-radius: 50%; color: var(--muted); }
 
 .viewport-stage { position: relative; min-width: 0; min-height: 0; overflow: hidden; background: var(--viewport); }
-.mode-panel { display: none; position: absolute; inset: 0 0 54px; min-width: 0; min-height: 0; }.mode-panel.active { display: block; }
+.mode-panel { display: none; position: absolute; inset: 0; min-width: 0; min-height: 0; }.mode-panel.active { display: block; }
 .empty-state { position: absolute; inset: 0; z-index: 5; display: flex; flex-direction: column; align-items: center; justify-content: center; padding-bottom: 30px; text-align: center; background: #080b0c; }
 .empty-constellation { display: none; }
 .clinical-symbol { width: 52px; height: 42px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 5px; align-items: center; margin-bottom: 22px; opacity: .72; }.clinical-symbol i { height: 34px; border: 1px solid #b7c9c4; border-radius: 7px; background: #f3f7f5; }.clinical-symbol i:nth-child(2) { height: 42px; border-color: var(--teal); background: #e8f3f0; }.clinical-symbol i:nth-child(3) { height: 26px; }
@@ -189,7 +187,6 @@ button:focus-visible, input:focus-visible { outline: 1px solid var(--teal); outl
 /* Light clinical workspace: quiet surfaces, hairline structure, one accent. */
 .topbar, .commandbar { background: #fff; }
 .brand, .mode-item.active { color: var(--text); }
-.brand-glyph::before, .brand-glyph::after { background: #1d1d1f; }
 .round-action, .quiet-action, .primary-action, .topbar-actions button, .series-control, .rail-import, .rail-icon { background: var(--panel-2); color: var(--text-soft); }
 .primary-action { background: var(--teal) !important; color: #fff !important; }
 .patient-avatar { background: #edf6f3; color: var(--teal); border-color: #c9e0da; }
@@ -234,8 +231,6 @@ button:focus-visible, input:focus-visible { outline: 1px solid var(--teal); outl
 .app-shell { background: var(--bg); }
 .topbar { height: 52px; padding: 0 18px; background: rgba(251,252,251,.96); box-shadow: 0 1px 0 rgba(23,34,31,.025); }
 .brand { gap: 10px; font-size: 15px; }
-.brand-glyph { width: 24px; height: 24px; }
-.brand-glyph::before, .brand-glyph::after { width: 15px; height: 6px; background: #26332f; }
 .topbar-actions { gap: 8px; }
 .round-action, .quiet-action, .primary-action, .topbar-actions button { height: 31px; border-radius: 8px; }
 .round-action { width: 31px; }
@@ -326,7 +321,7 @@ body[data-display="hologram"] .hologram-controls, body[data-display="hologram"] 
   body { font-size: 16px; }
   .app-shell { min-width: 0; }
   .topbar { height: 58px; gap: 12px; padding: 0 16px; }
-  .brand { font-size: 15px; letter-spacing: .05em; }.brand-glyph { width: 23px; height: 23px; }
+  .brand { font-size: 15px; letter-spacing: .05em; }
   .topbar-actions { gap: 5px; }.local-status, #contextImport { display: none; }.topbar-actions .primary-action { width: 32px; overflow: hidden; padding: 0; font-size: 0; }.topbar-actions .primary-action::before { content: "↥"; font-size: 17px; }
   .round-action { width: 32px; height: 32px; }
   .commandbar { height: 48px; gap: 5px; padding: 0 12px; overflow-x: auto; scrollbar-width: none; }.commandbar::-webkit-scrollbar { display: none; }
@@ -339,7 +334,7 @@ body[data-display="hologram"] .hologram-controls, body[data-display="hologram"] 
   .rail-tabs, .analysis-tabs { height: 42px; }.rail-tabs button, .analysis-tabs button { font-size: 12px; }.rail-search { height: 48px; padding: 8px 14px; }.rail-search input, .modal-search input { font-size: 14px; }.study-list, .rail-list { padding: 10px; }
   .study-card { min-height: 0; margin-bottom: 10px; border-radius: 12px; }.study-preview { height: 90px; }.study-card-body { padding: 12px; }.study-card-top { font-size: 10px; }.study-card h3 { font-size: 14px; }.study-card p, .study-card-bottom { font-size: 10px; }
   .rail-row { min-height: 58px; padding: 9px; }.rail-row strong { font-size: 13px; }.rail-row small { font-size: 10px; }
-  .viewport-stage { min-width: 0; }.mode-panel { inset: 0 0 54px; }.viewport-topline { height: 46px; padding: 0 16px; }.viewport-topline > div span:last-child { font-size: 9px; }
+  .viewport-stage { min-width: 0; }.mode-panel { inset: 0; }.viewport-topline { height: 46px; padding: 0 16px; }.viewport-topline > div span:last-child { font-size: 9px; }
   .empty-state { padding: 24px; }.empty-state h1 { font-size: 28px; line-height: 1.1; text-align: center; }.empty-state p { font-size: 14px; line-height: 1.55; }.empty-state small { font-size: 9px; }.empty-actions { width: 100%; max-width: 330px; }.empty-actions button { flex: 1; height: 42px; border-radius: 12px; font-size: 12px; }
   .diagnostic-grid { height: calc(100% - 56px); grid-template-columns: 1fr; grid-template-rows: repeat(4, minmax(170px, 1fr)); overflow-y: auto; }.image-console { height: auto; min-height: 86px; grid-template-columns: 1fr; gap: 6px; padding: 10px 16px; }.image-console label { grid-template-columns: 45px minmax(0,1fr) 64px; font-size: 10px; }.dicom-viewport figcaption { min-height: 30px; padding: 0 12px; font-size: 9px; }
   .timeline-view, .context-view { overflow-y: auto; }.section-intro { padding: 22px 18px; align-items: flex-start; }.section-intro h2, .procedure-sidebar h2, .hologram-header h2 { font-size: 23px; }.section-intro p, .procedure-sidebar p { font-size: 13px; }.temporal-toolbar { display: block; padding: 12px 18px; }.temporal-modes { display: grid; grid-template-columns: repeat(3, 1fr); }.temporal-modes button { height: 34px; font-size: 11px; }.temporal-toolbar p { max-width: none; margin-top: 10px; text-align: left; font-size: 12px; }.temporal-change-row { grid-template-columns: 82px minmax(90px,1fr) 14px; }.temporal-change-row small { grid-column: 1 / -1; grid-row: 2; }.change-stage, .context-list { padding: 14px 18px; }.context-list { grid-template-columns: 1fr; }.context-card p { font-size: 12px; }
@@ -455,8 +450,17 @@ body[data-display="hologram"] .hologram-controls, body[data-display="hologram"] 
 
 /* Final workspace hierarchy: keep the first sight focused on the study and model. */
 .topbar {
-  min-height: 64px;
-  padding: 0 22px;
+  height: 54px;
+  min-height: 54px;
+  padding: 0 18px;
+}
+
+.workstation {
+  height: calc(100vh - 98px);
+}
+
+.workstation.no-study {
+  height: calc(100vh - 54px);
 }
 
 .topbar-actions {
@@ -464,16 +468,16 @@ body[data-display="hologram"] .hologram-controls, body[data-display="hologram"] 
 }
 
 .topbar-action {
-  min-height: 38px;
-  padding: 0 13px;
-  border-radius: 11px;
-  font-size: 11px;
+  min-height: 32px;
+  padding: 0 10px;
+  border-radius: 8px;
+  font-size: 10px;
   font-weight: 540;
 }
 
 .topbar-action .action-icon {
-  margin-right: 7px;
-  font-size: 14px;
+  margin-right: 5px;
+  font-size: 13px;
 }
 
 .topbar-actions > .topbar-action:not(.primary-action) {
@@ -574,9 +578,10 @@ body[data-display="hologram"] .hologram-controls, body[data-display="hologram"] 
 }
 
 .commandbar {
-  min-height: 58px;
-  padding: 0 20px;
-  gap: 5px;
+  height: 44px;
+  min-height: 44px;
+  padding: 0 14px;
+  gap: 4px;
   background: #fbfcfb;
 }
 
@@ -585,34 +590,43 @@ body[data-display="hologram"] .hologram-controls, body[data-display="hologram"] 
 }
 
 .series-control {
-  min-width: 178px;
-  height: 38px;
-  padding: 0 12px;
+  min-width: 172px;
+  height: 32px;
+  padding: 0 10px;
   border: 1px solid #d7e3df;
-  border-radius: 10px;
-  font-size: 12px;
+  border-radius: 8px;
+  font-size: 10px;
 }
 
 .series-control .file-icon {
-  margin-right: 8px;
+  margin-right: 6px;
   color: var(--teal);
-  font-size: 15px;
+  font-size: 13px;
+}
+
+.command-tools {
+  display: flex;
+  align-items: center;
+  gap: 1px;
+  margin-left: 3px;
+  padding-left: 7px;
+  border-left: 1px solid #dfe9e5;
 }
 
 .tool-control {
-  height: 38px;
-  padding: 0 11px;
+  height: 32px;
+  padding: 0 8px;
   border: 1px solid transparent;
-  border-radius: 10px;
+  border-radius: 7px;
   color: #526660;
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 550;
 }
 
 .tool-control > span {
-  margin-right: 6px;
+  margin-right: 4px;
   color: #4e746b;
-  font-size: 14px;
+  font-size: 12px;
 }
 
 .tool-control > span[id] {
@@ -628,19 +642,19 @@ body[data-display="hologram"] .hologram-controls, body[data-display="hologram"] 
 
 .view-switch {
   gap: 2px;
-  padding: 3px;
+  padding: 2px;
   border: 1px solid #dce7e3;
-  border-radius: 11px;
+  border-radius: 8px;
   background: #eef3f1;
 }
 
 .mode-item {
-  height: 31px;
-  padding: 0 10px;
+  height: 27px;
+  padding: 0 8px;
   border: 0;
-  border-radius: 8px;
+  border-radius: 6px;
   color: #6a7c76;
-  font-size: 10px;
+  font-size: 9px;
   font-weight: 560;
 }
 
