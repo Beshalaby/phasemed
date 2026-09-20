@@ -43,6 +43,8 @@ To reseed from scratch, stop the server and remove `.runtime/studies`, `.runtime
 
 Anatomy credit: BodyParts3D, © The Database Center for Life Science, licensed under [CC Attribution-Share Alike 2.1 Japan](https://creativecommons.org/licenses/by-sa/2.1/jp/).
 
+Landing page typefaces (self-hosted in `web/fonts/` so the page works offline): Fraunces and IBM Plex Sans/Mono, both under the SIL Open Font License 1.1; the license texts sit alongside the font files.
+
 ## Hologram voice control
 
 The hologram view has a hold-to-talk control: hold `Space` (or hold the button) and speak,

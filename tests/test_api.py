@@ -12,8 +12,10 @@ def test_landing_page_and_workstation_routes():
     client = TestClient(main.app)
     landing = client.get("/")
     assert landing.status_code == 200
-    assert "Imaging, <em>compiled.</em>" in landing.text
-    assert "data-slide=\"4\"" in landing.text
+    assert "Imaging,</span>" in landing.text and "compiled.</em>" in landing.text
+    assert 'data-scene="finding"' in landing.text
+    assert 'data-preview="holo"' in landing.text
+    assert 'href="/workspace"' in landing.text
     workspace = client.get("/workspace")
     assert workspace.status_code == 200
     assert "Open a study" in workspace.text
